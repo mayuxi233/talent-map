@@ -296,6 +296,9 @@ body {
 // ============================================================
 // Supabase 客户端初始化
 // ============================================================
+const DEFAULT_SUPABASE_URL = 'https://gtggtnnuncclrhezuria.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_hbJ7HcsjIo5Qk6rRuGZNXA_fBu4W7I3';
+
 let supabase = null;
 
 function getConfig() {
@@ -1030,9 +1033,13 @@ window.addEventListener('resize', () => {
 
 // ---- Init ----
 (async function init() {
+  // Try localStorage config first, then fall back to hardcoded defaults
   const cfg = getConfig();
-  if (cfg.url && cfg.key) {
-    supabase = window.supabase.createClient(cfg.url, cfg.key);
+  const url = cfg.url || DEFAULT_SUPABASE_URL;
+  const key = cfg.key || DEFAULT_SUPABASE_KEY;
+  
+  if (url && key) {
+    supabase = window.supabase.createClient(url, key);
     document.getElementById('setupModal').style.display = 'none';
     try {
       const { error } = await supabase.from('positions').select('count', { count: 'exact', head: true });
@@ -1043,11 +1050,11 @@ window.addEventListener('resize', () => {
       refreshAll();
       return;
     } catch(e) {
-      // Config invalid, show setup
+      console.warn('Supabase connect failed:', e);
       supabase = null;
     }
   }
-  // Show setup modal
+  // Show setup modal only if auto-connect failed
   document.getElementById('setupModal').style.display = 'flex';
 })();
 </script>
