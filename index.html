@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>人才盘点工具</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root {
   --bg: #F8F9FA;
@@ -294,30 +293,64 @@ body {
 
 <script>
 // ============================================================
-// Supabase 客户端初始化
+// Supabase REST API 直连（不依赖 SDK）
 // ============================================================
 const DEFAULT_SUPABASE_URL = 'https://gtggtnnuncclrhezuria.supabase.co';
 const DEFAULT_SUPABASE_KEY = 'sb_publishable_hbJ7HcsjIo5Qk6rRuGZNXA_fBu4W7I3';
 
-let supabase = null;
+let SB_URL = '';
+let SB_KEY = '';
+let dbConnected = false;
 
 function getConfig() {
   try { return JSON.parse(localStorage.getItem('talent_map_supabase') || '{}'); } catch(e) { return {}; }
 }
 
+async function sbApi(table, method, body, query) {
+  let url = SB_URL + '/rest/v1/' + table;
+  if (query) url += '?' + query;
+  const headers = {
+    'apikey': SB_KEY,
+    'Authorization': 'Bearer ' + SB_KEY,
+    'Content-Type': 'application/json'
+  };
+  if (body) headers['Prefer'] = 'return=representation';
+  if (method === 'PATCH') headers['Prefer'] = 'return=representation';
+  const opts = { method, headers };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error(res.status + ': ' + txt);
+  }
+  return res.json();
+}
+
+async function testConnection() {
+  try {
+    await sbApi('positions', 'GET', null, 'select=id&limit=1');
+    return true;
+  } catch(e) {
+    console.warn('Connection test failed:', e);
+    return false;
+  }
+}
+
 async function saveSetup() {
-  const url = document.getElementById('cfgUrl').value.trim();
+  const url = document.getElementById('cfgUrl').value.trim().replace(/\/$/, '');
   const key = document.getElementById('cfgKey').value.trim();
   if (!url || !key) {
     document.getElementById('setupError').style.display = 'block';
     document.getElementById('setupError').textContent = '请填写 URL 和 Key';
     return;
   }
+  SB_URL = url;
+  SB_KEY = key;
   try {
-    supabase = window.supabase.createClient(url, key);
-    const { error } = await supabase.from('positions').select('count', { count: 'exact', head: true });
-    if (error) throw error;
+    const ok = await testConnection();
+    if (!ok) throw new Error('连接测试失败');
     localStorage.setItem('talent_map_supabase', JSON.stringify({ url, key }));
+    dbConnected = true;
     document.getElementById('setupModal').style.display = 'none';
     document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
     await loadData();
@@ -326,7 +359,7 @@ async function saveSetup() {
     showToast('连接成功');
   } catch(e) {
     document.getElementById('setupError').style.display = 'block';
-    document.getElementById('setupError').textContent = '连接失败: ' + (e.message || '请检查 URL 和 Key 是否正确，以及是否已执行 SQL schema');
+    document.getElementById('setupError').textContent = '连接失败: ' + (e.message || '请检查 URL 和 Key');
   }
 }
 
@@ -396,16 +429,14 @@ const SOURCE = { lp:'猎头', mm:'脉脉', bs:'Boss', rec:'内推', other:'其�
 const SOURCE_COLORS = { lp:'#8B5CF6', mm:'#3B82F6', bs:'#10B981', rec:'#F59E0B', other:'#6B7280' };
 
 async function loadData() {
-  if (!supabase) return;
+  if (!dbConnected) return;
   try {
-    const { data: positions, error: perr } = await supabase.from('positions').select('*').order('created_at');
-    if (perr) throw perr;
+    const positions = await sbApi('positions', 'GET', null, 'select=*&order=created_at.asc');
     data.positions = positions.map(p => ({ id: p.id, name: p.name, createdAt: p.created_at }));
 
     data.candidates = [];
     for (const p of data.positions) {
-      const { data: cs, error: cerr } = await supabase.from('candidates').select('*').eq('position_id', p.id).order('created_at');
-      if (cerr) throw cerr;
+      const cs = await sbApi('candidates', 'GET', null, 'select=*&position_id=eq.' + p.id + '&order=created_at.asc');
       data.candidates.push(...cs.map(fromDB));
     }
     document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
@@ -468,8 +499,8 @@ async function addPosition() {
   const name = prompt('请输入岗位名称（如：高级前端工程师）：');
   if (!name || !name.trim()) return;
   try {
-    const { data: p, error } = await supabase.from('positions').insert({ name: name.trim() }).select().single();
-    if (error) throw error;
+    const rows = await sbApi('positions', 'POST', { name: name.trim() }, 'select=*&limit=1');
+    const p = rows[0];
     data.positions.push({ id: p.id, name: p.name, createdAt: p.created_at });
     currentPositionId = p.id;
   } catch(e) { showToast('创建失败: ' + e.message); return; }
@@ -593,8 +624,7 @@ function showCandidateDetail(id) {
 async function deleteCandidate(id) {
   if (!confirm('确定删除该人选吗？此操作不可恢复。')) return;
   try {
-    const { error } = await supabase.from('candidates').delete().eq('id', id);
-    if (error) throw error;
+    await sbApi('candidates', 'DELETE', null, 'id=eq.' + id);
   } catch(e) { showToast('删除失败: ' + e.message); return; }
   data.candidates = data.candidates.filter(c => c.id !== id);
   if (editingId === id) editingId = null;
@@ -741,16 +771,12 @@ async function saveCandidate() {
 
   try {
     if (editingId) {
-      const { data: updated, error } = await supabase.from('candidates')
-        .update(toDB(candidate)).eq('id', editingId).select().single();
-      if (error) throw error;
+      const rows = await sbApi('candidates', 'PATCH', toDB(candidate), 'id=eq.' + editingId);
       const idx = data.candidates.findIndex(c => c.id === editingId);
-      if (idx >= 0) data.candidates[idx] = fromDB(updated);
+      if (idx >= 0 && rows[0]) data.candidates[idx] = fromDB(rows[0]);
     } else {
-      const { data: created, error } = await supabase.from('candidates')
-        .insert(toDB(candidate)).select().single();
-      if (error) throw error;
-      data.candidates.push(fromDB(created));
+      const rows = await sbApi('candidates', 'POST', toDB(candidate), 'select=*&limit=1');
+      if (rows[0]) data.candidates.push(fromDB(rows[0]));
     }
   } catch(e) { showToast('保存失败: ' + e.message); return; }
 
@@ -815,10 +841,8 @@ function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.
 
 async function exportData() {
   try {
-    const { data: positions, error: perr } = await supabase.from('positions').select('*').order('created_at');
-    if (perr) throw perr;
-    const { data: candidates, error: cerr } = await supabase.from('candidates').select('*').order('created_at');
-    if (cerr) throw cerr;
+    const positions = await sbApi('positions', 'GET', null, 'select=*&order=created_at.asc');
+    const candidates = await sbApi('candidates', 'GET', null, 'select=*&order=created_at.asc');
     const exportObj = {
       positions: positions.map(p => ({ id: p.id, name: p.name, createdAt: p.created_at })),
       candidates: candidates.map(fromDB)
@@ -838,15 +862,11 @@ async function importData(e) {
     try {
       const imp = JSON.parse(ev.target.result);
       if (imp.positions && imp.candidates) {
-        // Import positions first
         for (const p of imp.positions) {
-          const { error } = await supabase.from('positions').upsert({ id: p.id, name: p.name }).select();
-          if (error) throw error;
+          await sbApi('positions', 'POST', { id: p.id, name: p.name }, 'select=*&limit=1');
         }
-        // Import candidates
         for (const c of imp.candidates) {
-          const { error } = await supabase.from('candidates').upsert(toDB({...c, positionId: c.positionId})).select();
-          if (error) throw error;
+          await sbApi('candidates', 'POST', toDB({...c, positionId: c.positionId}), 'select=*&limit=1');
         }
         await loadData(); refreshAll(); showToast('已导入 ' + imp.candidates.length + ' 条');
       } else showToast('文件格式不正确');
@@ -1033,25 +1053,24 @@ window.addEventListener('resize', () => {
 
 // ---- Init ----
 (async function init() {
-  // Try localStorage config first, then fall back to hardcoded defaults
   const cfg = getConfig();
-  const url = cfg.url || DEFAULT_SUPABASE_URL;
-  const key = cfg.key || DEFAULT_SUPABASE_KEY;
-  
-  if (url && key) {
-    supabase = window.supabase.createClient(url, key);
+  SB_URL = cfg.url || DEFAULT_SUPABASE_URL;
+  SB_KEY = cfg.key || DEFAULT_SUPABASE_KEY;
+
+  if (SB_URL && SB_KEY) {
     document.getElementById('setupModal').style.display = 'none';
     try {
-      const { error } = await supabase.from('positions').select('count', { count: 'exact', head: true });
-      if (error) throw error;
-      document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
-      await loadData();
-      if (data.positions.length > 0) currentPositionId = data.positions[0].id;
-      refreshAll();
-      return;
+      const ok = await testConnection();
+      if (ok) {
+        dbConnected = true;
+        document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
+        await loadData();
+        if (data.positions.length > 0) currentPositionId = data.positions[0].id;
+        refreshAll();
+        return;
+      }
     } catch(e) {
-      console.warn('Supabase connect failed:', e);
-      supabase = null;
+      console.warn('Auto-connect failed:', e);
     }
   }
   // Show setup modal only if auto-connect failed
