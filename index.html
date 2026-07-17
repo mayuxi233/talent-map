@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>人才盘点工具</title>
 <script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
 <style>
 :root {
   --bg: #F8F9FA;
@@ -16,15 +19,18 @@
   --primary: #4F46E5;
   --primary-light: #EEF2FF;
   --radius: 10px;
-  --new: #9CA3AF;
+  --pending: #9CA3AF;
   --contacted: #3B82F6;
-  --interviewing: #F59E0B;
-  --passed: #10B981;
-  --rejected: #EF4444;
+  --recommended: #8B5CF6;
+  --interviewed: #F59E0B;
+  --eliminated: #EF4444;
+  --offer: #10B981;
+  --not-interested: #6B7280;
   --src-lp: #8B5CF6;
   --src-mm: #3B82F6;
   --src-bs: #10B981;
-  --src-rec: #F59E0B;
+  --src-zl: #F59E0B;
+  --src-rec: #EC4899;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -54,8 +60,8 @@ body {
 .btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
 .btn.primary:hover { background: #4338CA; }
 .btn.sm { padding: 4px 10px; font-size: 12px; }
-.btn.danger { color: var(--rejected); }
-.btn.danger:hover { background: #FEF2F2; border-color: var(--rejected); }
+.btn.danger { color: var(--eliminated); }
+.btn.danger:hover { background: #FEF2F2; border-color: var(--eliminated); }
 
 .layout { display: flex; height: calc(100vh - 56px); }
 
@@ -73,11 +79,13 @@ body {
 .filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
 .filter-chip { padding: 3px 10px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); cursor: pointer; background: var(--bg); transition: all 0.15s; }
 .filter-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
-.filter-chip[data-status="new"].active { background: var(--new); border-color: var(--new); }
+.filter-chip[data-status="pending"].active { background: var(--pending); border-color: var(--pending); }
 .filter-chip[data-status="contacted"].active { background: var(--contacted); border-color: var(--contacted); }
-.filter-chip[data-status="interviewing"].active { background: var(--interviewing); border-color: var(--interviewing); }
-.filter-chip[data-status="passed"].active { background: var(--passed); border-color: var(--passed); }
-.filter-chip[data-status="rejected"].active { background: var(--rejected); border-color: var(--rejected); }
+.filter-chip[data-status="recommended"].active { background: var(--recommended); border-color: var(--recommended); }
+.filter-chip[data-status="interviewed"].active { background: var(--interviewed); border-color: var(--interviewed); }
+.filter-chip[data-status="eliminated"].active { background: var(--eliminated); border-color: var(--eliminated); }
+.filter-chip[data-status="offer"].active { background: var(--offer); border-color: var(--offer); }
+.filter-chip[data-status="not_interested"].active { background: var(--not-interested); border-color: var(--not-interested); }
 
 .candidate-list { flex: 1; overflow-y: auto; padding: 8px; }
 .candidate-card {
@@ -95,7 +103,7 @@ body {
 
 .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
 .graph-container { flex: 1; position: relative; overflow: auto; }
-.graph-legend { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 12px; background: var(--card); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; z-index: 5; }
+.graph-legend { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 12px; background: var(--card); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; z-index: 5; flex-wrap: wrap; max-width: 90%; }
 .graph-legend span { display: flex; align-items: center; gap: 5px; }
 .graph-legend .dot { width: 8px; height: 8px; border-radius: 50%; }
 
@@ -120,8 +128,8 @@ body {
 .edu-entry, .work-entry { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
 .entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: var(--text2); }
 
-.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-.tab { padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--text2); border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; gap: 2px; }
+.tab { padding: 8px 14px; cursor: pointer; font-size: 13px; color: var(--text2); border-bottom: 2px solid transparent; transition: all 0.15s; white-space: nowrap; }
 .tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 
 .resume-paste { width: 100%; min-height: 160px; font-size: 13px; font-family: 'SF Mono', 'Menlo', monospace; }
@@ -135,8 +143,50 @@ body {
 .timeline-item:last-child { border-bottom: none; }
 .timeline-item .period { color: var(--text3); font-size: 12px; }
 
-.toast { position: fixed; top: 20px; right: 20px; background: #1F2937; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast { position: fixed; top: 20px; right: 20px; background: #1F2937; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; z-index: 300; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
 .toast.show { opacity: 1; }
+
+/* Image/Document upload area */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 28px 20px;
+  text-align: center; cursor: pointer; transition: all 0.2s; background: var(--bg);
+}
+.upload-zone:hover { border-color: var(--primary); background: var(--primary-light); }
+.upload-zone.dragover { border-color: var(--primary); background: var(--primary-light); transform: scale(1.01); }
+.upload-zone .icon { font-size: 36px; margin-bottom: 8px; }
+.upload-zone .title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+.upload-zone .desc { font-size: 12px; color: var(--text3); }
+.upload-zone input[type="file"] { display: none; }
+
+.paste-zone {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 28px 20px;
+  text-align: center; transition: all 0.2s; background: var(--bg); min-height: 140px;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+}
+.paste-zone.active { border-color: var(--primary); background: var(--primary-light); }
+.paste-zone .icon { font-size: 36px; margin-bottom: 8px; }
+.paste-zone .title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+.paste-zone .desc { font-size: 12px; color: var(--text3); }
+
+.ocr-preview { margin-top: 12px; }
+.ocr-preview img { max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid var(--border); }
+.ocr-progress { margin-top: 12px; font-size: 13px; color: var(--text2); }
+.ocr-progress .bar { width: 100%; height: 6px; background: var(--border); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.ocr-progress .bar-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width 0.3s; }
+
+/* Summary modal */
+.summary-card {
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: 20px; margin-bottom: 12px;
+}
+.summary-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+.summary-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.summary-stat { text-align: center; padding: 16px 8px; border-radius: 10px; background: var(--card); border: 1px solid var(--border); }
+.summary-stat .num { font-size: 28px; font-weight: 700; }
+.summary-stat .lbl { font-size: 12px; color: var(--text2); margin-top: 4px; }
+.summary-positions { margin-top: 12px; }
+.summary-positions .pos-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); margin-bottom: 6px; font-size: 13px; }
+.summary-positions .pos-item .count { font-weight: 600; color: var(--primary); }
 
 .setup-banner { padding: 12px 20px; background: #FEF3C7; border-bottom: 1px solid #FCD34D; font-size: 13px; display: none; text-align: center; }
 .setup-banner a { color: var(--primary); font-weight: 500; }
@@ -158,7 +208,7 @@ body {
         <button class="btn" onclick="skipSetup()">跳过（离线模式）</button>
         <button class="btn primary" onclick="saveSetup()">连接</button>
       </div>
-      <div id="setupError" style="color:var(--rejected);font-size:12px;margin-top:8px;display:none;"></div>
+      <div id="setupError" style="color:var(--eliminated);font-size:12px;margin-top:8px;display:none;"></div>
     </div>
   </div>
 </div>
@@ -168,11 +218,12 @@ body {
   <div class="sep"></div>
   <div class="stat"><span class="num" id="stat-total">0</span><span class="lbl">总人选</span></div>
   <div class="stat"><span class="num" id="stat-contacted" style="color:var(--contacted)">0</span><span class="lbl">已联系</span></div>
-  <div class="stat"><span class="num" id="stat-new" style="color:var(--new)">0</span><span class="lbl">待联系</span></div>
+  <div class="stat"><span class="num" id="stat-pending" style="color:var(--pending)">0</span><span class="lbl">待联系</span></div>
   <div class="stat"><span class="num" id="stat-companies">0</span><span class="lbl">家公司</span></div>
   <div class="sep"></div>
   <div id="apiStatus" class="stat" style="color:#9CA3AF;font-size:12px;">● 连接中...</div>
   <div class="right">
+    <button class="btn sm" onclick="openSummaryModal()">复盘总结</button>
     <button class="btn sm" onclick="exportData()">导出备份</button>
     <label class="btn sm" style="cursor:pointer;">导入备份<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
     <button class="btn primary" onclick="openAddModal()">+ 录入人选</button>
@@ -192,11 +243,13 @@ body {
       </div>
       <div class="filter-row" id="filterRow">
         <span class="filter-chip active" data-status="all" onclick="setFilter('all')">全部</span>
-        <span class="filter-chip" data-status="new" onclick="setFilter('new')">待联系</span>
+        <span class="filter-chip" data-status="pending" onclick="setFilter('pending')">待联系</span>
         <span class="filter-chip" data-status="contacted" onclick="setFilter('contacted')">已联系</span>
-        <span class="filter-chip" data-status="interviewing" onclick="setFilter('interviewing')">面试中</span>
-        <span class="filter-chip" data-status="passed" onclick="setFilter('passed')">已通过</span>
-        <span class="filter-chip" data-status="rejected" onclick="setFilter('rejected')">已淘汰</span>
+        <span class="filter-chip" data-status="recommended" onclick="setFilter('recommended')">已推荐</span>
+        <span class="filter-chip" data-status="interviewed" onclick="setFilter('interviewed')">已面试</span>
+        <span class="filter-chip" data-status="eliminated" onclick="setFilter('eliminated')">已淘汰</span>
+        <span class="filter-chip" data-status="offer" onclick="setFilter('offer')">offer</span>
+        <span class="filter-chip" data-status="not_interested" onclick="setFilter('not_interested')">不考虑</span>
       </div>
     </div>
     <div class="candidate-list" id="candidateList">
@@ -206,16 +259,19 @@ body {
   <div class="main">
     <div class="graph-container" id="graphContainer">
       <div class="graph-legend">
-        <span><span class="dot" style="background:var(--new)"></span>待联系</span>
+        <span><span class="dot" style="background:var(--pending)"></span>待联系</span>
         <span><span class="dot" style="background:var(--contacted)"></span>已联系</span>
-        <span><span class="dot" style="background:var(--interviewing)"></span>面试中</span>
-        <span><span class="dot" style="background:var(--passed)"></span>已通过</span>
-        <span><span class="dot" style="background:var(--rejected)"></span>已淘汰</span>
+        <span><span class="dot" style="background:var(--recommended)"></span>已推荐</span>
+        <span><span class="dot" style="background:var(--interviewed)"></span>已面试</span>
+        <span><span class="dot" style="background:var(--eliminated)"></span>已淘汰</span>
+        <span><span class="dot" style="background:var(--offer)"></span>offer</span>
+        <span><span class="dot" style="background:var(--not-interested)"></span>不考虑</span>
       </div>
     </div>
   </div>
 </div>
 
+<!-- Add/Edit Candidate Modal -->
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <div class="modal-header">
@@ -224,9 +280,13 @@ body {
     </div>
     <div class="modal-body">
       <div class="tabs">
-        <div class="tab active" onclick="switchTab('form')">手动填写</div>
-        <div class="tab" onclick="switchTab('paste')">粘贴简历文本</div>
+        <div class="tab active" data-tab="form" onclick="switchTab('form')">手动填写</div>
+        <div class="tab" data-tab="paste" onclick="switchTab('paste')">粘贴简历</div>
+        <div class="tab" data-tab="image" onclick="switchTab('image')">截图识别</div>
+        <div class="tab" data-tab="upload" onclick="switchTab('upload')">上传文档</div>
       </div>
+
+      <!-- Tab: Manual Form -->
       <div id="tab-form">
         <div class="form-group"><label>所属岗位</label><select id="formPosition"></select></div>
         <div class="form-row">
@@ -244,14 +304,22 @@ body {
         <div class="form-row-3">
           <div class="form-group"><label>联系状态</label>
             <select id="formStatus">
-              <option value="new">待联系</option><option value="contacted">已联系</option>
-              <option value="interviewing">面试中</option><option value="passed">已通过</option><option value="rejected">已淘汰</option>
+              <option value="pending">待联系</option>
+              <option value="contacted">已联系</option>
+              <option value="recommended">已推荐</option>
+              <option value="interviewed">已面试</option>
+              <option value="eliminated">已淘汰</option>
+              <option value="offer">offer</option>
+              <option value="not_interested">不考虑</option>
             </select>
           </div>
           <div class="form-group"><label>来源渠道</label>
             <select id="formSource">
-              <option value="lp">猎头</option><option value="mm">脉脉</option>
-              <option value="bs">Boss</option><option value="rec">内推</option><option value="other">其他</option>
+              <option value="lp">猎聘</option>
+              <option value="mm">脉脉</option>
+              <option value="bs">boss</option>
+              <option value="zl">智联</option>
+              <option value="rec">转介绍</option>
             </select>
           </div>
           <div class="form-group"><label>工作年限</label><input type="text" id="formYears" placeholder="自动计算/手动填"></div>
@@ -264,6 +332,8 @@ body {
         </div>
         <div class="form-group"><label>备注</label><textarea id="formNotes" rows="2"></textarea></div>
       </div>
+
+      <!-- Tab: Paste Resume Text -->
       <div id="tab-paste" style="display:none">
         <div class="form-group"><label>粘贴简历全文（系统自动解析）</label>
           <textarea class="resume-paste" id="pasteArea" placeholder="在此粘贴简历文本内容..."></textarea>
@@ -271,6 +341,41 @@ body {
         <button class="btn primary" onclick="parseResume()">智能解析</button>
         <div id="parseResult" style="margin-top:12px; font-size:13px; color:var(--text2)"></div>
       </div>
+
+      <!-- Tab: Image/Screenshot Recognition -->
+      <div id="tab-image" style="display:none">
+        <div class="form-group">
+          <label>截图识别（粘贴截图 或 上传图片）</label>
+          <div class="paste-zone" id="pasteZone">
+            <div class="icon">&#x1F4CB;</div>
+            <div class="title">Ctrl+V / Cmd+V 粘贴截图</div>
+            <div class="desc">或点击下方按钮上传简历截图图片</div>
+          </div>
+          <div style="margin-top:10px;display:flex;gap:8px;">
+            <label class="btn sm" style="cursor:pointer;">选择图片上传<input type="file" accept="image/*" onchange="handleImageFile(event)" style="display:none"></label>
+            <button class="btn sm" onclick="clearImagePreview()">清除</button>
+          </div>
+        </div>
+        <div class="ocr-preview" id="ocrPreview" style="display:none"></div>
+        <div class="ocr-progress" id="ocrProgress" style="display:none"></div>
+        <div id="imageParseResult" style="margin-top:12px; font-size:13px; color:var(--text2)"></div>
+      </div>
+
+      <!-- Tab: Upload Document -->
+      <div id="tab-upload" style="display:none">
+        <div class="form-group">
+          <label>上传简历文档（PDF / Word）</label>
+          <div class="upload-zone" id="uploadZone" onclick="document.getElementById('docFileInput').click()">
+            <div class="icon">&#x1F4C4;</div>
+            <div class="title">点击上传或拖拽文件到此处</div>
+            <div class="desc">支持 .pdf / .docx / .doc 格式</div>
+            <input type="file" id="docFileInput" accept=".pdf,.docx,.doc" onchange="handleDocFile(event)">
+          </div>
+        </div>
+        <div class="ocr-progress" id="docProgress" style="display:none"></div>
+        <div id="docParseResult" style="margin-top:12px; font-size:13px; color:var(--text2)"></div>
+      </div>
+
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--border)">
         <button class="btn" onclick="closeModal('addModal')">取消</button>
         <button class="btn primary" id="saveBtn" onclick="saveCandidate()">保存</button>
@@ -279,6 +384,7 @@ body {
   </div>
 </div>
 
+<!-- Candidate Detail Modal -->
 <div class="modal-overlay" id="detailModal">
   <div class="modal">
     <div class="modal-header">
@@ -286,6 +392,24 @@ body {
       <button class="modal-close" onclick="closeModal('detailModal')">&times;</button>
     </div>
     <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- Summary Modal -->
+<div class="modal-overlay" id="summaryModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>复盘总结</h2>
+      <button class="modal-close" onclick="closeModal('summaryModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" data-tab="weekly" onclick="switchSummaryTab('weekly')">周度总结</div>
+        <div class="tab" data-tab="monthly" onclick="switchSummaryTab('monthly')">月度总结</div>
+        <div class="tab" data-tab="yearly" onclick="switchSummaryTab('yearly')">年度总结</div>
+      </div>
+      <div id="summaryContent"></div>
+    </div>
   </div>
 </div>
 
@@ -301,6 +425,11 @@ const DEFAULT_SUPABASE_KEY = 'sb_publishable_hbJ7HcsjIo5Qk6rRuGZNXA_fBu4W7I3';
 let SB_URL = '';
 let SB_KEY = '';
 let dbConnected = false;
+
+// pdf.js worker
+if (window.pdfjsLib) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
 
 function getConfig() {
   try { return JSON.parse(localStorage.getItem('talent_map_supabase') || '{}'); } catch(e) { return {}; }
@@ -371,6 +500,50 @@ function skipSetup() {
 }
 
 // ============================================================
+// 状态与来源枚举（含旧值迁移）
+// ============================================================
+const STATUS = {
+  pending: '待联系',
+  contacted: '已联系',
+  recommended: '已推荐',
+  interviewed: '已面试',
+  eliminated: '已淘汰',
+  offer: 'offer',
+  not_interested: '不考虑'
+};
+const STATUS_COLORS = {
+  pending: '#9CA3AF',
+  contacted: '#3B82F6',
+  recommended: '#8B5CF6',
+  interviewed: '#F59E0B',
+  eliminated: '#EF4444',
+  offer: '#10B981',
+  not_interested: '#6B7280'
+};
+const SOURCE = {
+  lp: '猎聘',
+  mm: '脉脉',
+  bs: 'boss',
+  zl: '智联',
+  rec: '转介绍',
+  other: '其他'
+};
+const SOURCE_COLORS = {
+  lp: '#8B5CF6',
+  mm: '#3B82F6',
+  bs: '#10B981',
+  zl: '#F59E0B',
+  rec: '#EC4899',
+  other: '#6B7280'
+};
+
+// 旧状态值 → 新状态值
+function migrateStatus(s) {
+  const map = { new: 'pending', interviewing: 'interviewed', passed: 'offer', rejected: 'eliminated' };
+  return map[s] || s;
+}
+
+// ============================================================
 // 数据层 —— camelCase ↔ snake_case 转换
 // ============================================================
 function toDB(c) {
@@ -402,7 +575,7 @@ function fromDB(row) {
     email: row.email,
     currentCompany: row.current_company,
     currentPosition: row.current_position,
-    status: row.status,
+    status: migrateStatus(row.status),
     source: row.source,
     manualYears: row.manual_years,
     education: row.education || [],
@@ -422,11 +595,7 @@ let currentPositionId = '';
 let currentFilter = 'all';
 let collapsedCompanies = new Set();
 let editingId = null;
-
-const STATUS = { new:'待联系', contacted:'已联系', interviewing:'面试中', passed:'已通过', rejected:'已淘汰' };
-const STATUS_COLORS = { new:'#9CA3AF', contacted:'#3B82F6', interviewing:'#F59E0B', passed:'#10B981', rejected:'#EF4444' };
-const SOURCE = { lp:'猎头', mm:'脉脉', bs:'Boss', rec:'内推', other:'其他' };
-const SOURCE_COLORS = { lp:'#8B5CF6', mm:'#3B82F6', bs:'#10B981', rec:'#F59E0B', other:'#6B7280' };
+let currentSummaryTab = 'weekly';
 
 async function loadData() {
   if (!dbConnected) return;
@@ -449,7 +618,7 @@ async function loadData() {
 function showToast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2000);
+  setTimeout(() => t.classList.remove('show'), 2500);
 }
 
 function getCandidates() {
@@ -524,13 +693,14 @@ function setFilter(status) {
   const el = document.querySelector(`.filter-chip[data-status="${status}"]`);
   if (el) el.classList.add('active');
   renderCandidates();
+  renderGraph();
 }
 
 function updateStats() {
   const cs = getCandidates();
   document.getElementById('stat-total').textContent = cs.length;
-  document.getElementById('stat-contacted').textContent = cs.filter(c => c.status !== 'new').length;
-  document.getElementById('stat-new').textContent = cs.filter(c => c.status === 'new').length;
+  document.getElementById('stat-contacted').textContent = cs.filter(c => c.status !== 'pending').length;
+  document.getElementById('stat-pending').textContent = cs.filter(c => c.status === 'pending').length;
   const companies = new Set(cs.map(c => c.currentCompany).filter(Boolean));
   document.getElementById('stat-companies').textContent = companies.size;
 }
@@ -562,7 +732,7 @@ function renderCandidates() {
     `<div class="candidate-card ${editingId===c.id?'selected':''}" onclick="selectCandidate('${c.id}')">
       <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
         <span class="name">${esc(c.name)}</span>
-        <span style="font-size:11px;color:${STATUS_COLORS[c.status]}">${STATUS[c.status]}</span>
+        <span style="font-size:11px;color:${STATUS_COLORS[c.status]||'#9CA3AF'}">${STATUS[c.status]||c.status}</span>
       </div>
       <div class="info">
         <span>${esc(c.currentCompany||'?')} · ${esc(c.currentPosition||'?')}</span>
@@ -593,7 +763,7 @@ function showCandidateDetail(id) {
     <div class="detail-item"><div class="lbl">当前岗位</div><div class="val">${esc(c.currentPosition||'--')}</div></div>
     <div class="detail-item"><div class="lbl">工作年限</div><div class="val">${fmtYears(c)}</div></div>
     <div class="detail-item"><div class="lbl">来源</div><div class="val" style="color:${SOURCE_COLORS[c.source]||'#6B7280'}">${SOURCE[c.source]||'其他'}</div></div>
-    <div class="detail-item"><div class="lbl">状态</div><div class="val" style="color:${STATUS_COLORS[c.status]}">${STATUS[c.status]}</div></div>
+    <div class="detail-item"><div class="lbl">状态</div><div class="val" style="color:${STATUS_COLORS[c.status]||'#9CA3AF'}">${STATUS[c.status]||c.status}</div></div>
     <div class="detail-item"><div class="lbl">录入时间</div><div class="val">${new Date(c.createdAt).toLocaleDateString('zh-CN')}</div></div>
   </div>`;
   if (c.education.length) {
@@ -632,13 +802,19 @@ async function deleteCandidate(id) {
   showToast('已删除');
 }
 
+// ============================================================
+// Tabs
+// ============================================================
 let currentTab = 'form';
 function switchTab(tab) {
   currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  document.querySelectorAll('.tab')[tab==='form'?0:1].classList.add('active');
-  document.getElementById('tab-form').style.display = tab==='form'?'block':'none';
-  document.getElementById('tab-paste').style.display = tab==='paste'?'block':'none';
+  document.querySelectorAll('#addModal .tab').forEach(t => t.classList.remove('active'));
+  const tabEl = document.querySelector(`#addModal .tab[data-tab="${tab}"]`);
+  if (tabEl) tabEl.classList.add('active');
+  ['form','paste','image','upload'].forEach(t => {
+    const el = document.getElementById('tab-'+t);
+    if (el) el.style.display = t===tab ? 'block' : 'none';
+  });
 }
 
 function openAddModal() {
@@ -667,7 +843,7 @@ function openEditModal(id) {
   document.getElementById('formCurCompany').value = c.currentCompany||'';
   document.getElementById('formCurPosition').value = c.currentPosition||'';
   document.getElementById('formStatus').value = c.status;
-  document.getElementById('formSource').value = c.source||'other';
+  document.getElementById('formSource').value = c.source||'lp';
   document.getElementById('formYears').value = (c.manualYears != null) ? c.manualYears : (calcWorkYears(c)||'');
   document.getElementById('formNotes').value = c.notes||'';
   document.getElementById('pasteArea').value = c.resumeRaw||'';
@@ -683,12 +859,19 @@ function resetForm() {
   document.getElementById('formEmail').value = '';
   document.getElementById('formCurCompany').value = '';
   document.getElementById('formCurPosition').value = '';
-  document.getElementById('formStatus').value = 'new';
+  document.getElementById('formStatus').value = 'pending';
   document.getElementById('formSource').value = 'lp';
   document.getElementById('formYears').value = '';
   document.getElementById('formNotes').value = '';
   document.getElementById('pasteArea').value = '';
   document.getElementById('parseResult').innerHTML = '';
+  document.getElementById('imageParseResult').innerHTML = '';
+  document.getElementById('docParseResult').innerHTML = '';
+  document.getElementById('ocrPreview').style.display = 'none';
+  document.getElementById('ocrPreview').innerHTML = '';
+  document.getElementById('ocrProgress').style.display = 'none';
+  document.getElementById('docProgress').style.display = 'none';
+  clearImagePreview();
   buildEduEntries([]);
   buildWorkEntries([]);
 }
@@ -785,9 +968,16 @@ async function saveCandidate() {
   showToast('已保存');
 }
 
+// ============================================================
+// 简历解析
+// ============================================================
 function parseResume() {
   const text = document.getElementById('pasteArea').value.trim();
   if (!text) { showToast('请先粘贴简历文本'); return; }
+  applyParseResult(text, 'parseResult');
+}
+
+function applyParseResult(text, resultElId) {
   const result = parseResumeText(text);
   document.getElementById('formName').value = result.name || '';
   document.getElementById('formGender').value = result.gender || '';
@@ -797,9 +987,13 @@ function parseResume() {
   document.getElementById('formCurPosition').value = result.currentPosition || '';
   buildEduEntries(result.education.length ? result.education : []);
   buildWorkEntries(result.workExperience.length ? result.workExperience : []);
-  document.getElementById('parseResult').innerHTML =
-    `解析完成：姓名=${result.name||'未识别'}，电话=${result.phone||'未识别'}，邮箱=${result.email||'未识别'}，` +
-    `公司=${result.currentCompany||'未识别'}，教育 ${result.education.length} 条，工作 ${result.workExperience.length} 条。<br>如有遗漏请手动补填。`;
+  document.getElementById('pasteArea').value = text;
+  const el = document.getElementById(resultElId);
+  if (el) {
+    el.innerHTML =
+      `解析完成：姓名=${result.name||'未识别'}，电话=${result.phone||'未识别'}，邮箱=${result.email||'未识别'}，` +
+      `公司=${result.currentCompany||'未识别'}，教育 ${result.education.length} 条，工作 ${result.workExperience.length} 条。<br>如有遗漏请手动补填，或切换到"手动填写"核对。`;
+  }
   switchTab('form');
   showToast('解析完成，请核对');
 }
@@ -836,6 +1030,347 @@ function parseResumeText(text) {
   return result;
 }
 
+// ============================================================
+// 图像识别（截图 / 图片上传 → OCR）
+// ============================================================
+let currentImageDataURL = null;
+
+// 监听全局粘贴事件（截图）
+document.addEventListener('paste', async (e) => {
+  if (currentTab !== 'image') return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const blob = item.getAsFile();
+      if (blob) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          currentImageDataURL = ev.target.result;
+          showImagePreview(currentImageDataURL);
+          runOCR(currentImageDataURL);
+        };
+        reader.readAsDataURL(blob);
+        e.preventDefault();
+        return;
+      }
+    }
+  }
+});
+
+function handleImageFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) { showToast('请选择图片文件'); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    currentImageDataURL = ev.target.result;
+    showImagePreview(currentImageDataURL);
+    runOCR(currentImageDataURL);
+  };
+  reader.readAsDataURL(file);
+  event.target.value = '';
+}
+
+function showImagePreview(dataURL) {
+  const preview = document.getElementById('ocrPreview');
+  preview.innerHTML = `<img src="${dataURL}" alt="简历截图预览">`;
+  preview.style.display = 'block';
+  document.getElementById('pasteZone').style.display = 'none';
+}
+
+function clearImagePreview() {
+  currentImageDataURL = null;
+  const preview = document.getElementById('ocrPreview');
+  preview.innerHTML = '';
+  preview.style.display = 'none';
+  const prog = document.getElementById('ocrProgress');
+  prog.innerHTML = '';
+  prog.style.display = 'none';
+  document.getElementById('pasteZone').style.display = 'flex';
+  document.getElementById('imageParseResult').innerHTML = '';
+}
+
+async function runOCR(dataURL) {
+  const prog = document.getElementById('ocrProgress');
+  prog.style.display = 'block';
+  prog.innerHTML = '<div>正在识别中，首次加载中文模型可能需要 10-30 秒...</div><div class="bar"><div class="bar-fill" style="width:0%"></div></div>';
+
+  try {
+    const worker = await Tesseract.createWorker(['chi_sim', 'eng'], 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          const pct = Math.round(m.progress * 100);
+          prog.innerHTML = `<div>正在识别文字... ${pct}%</div><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+        } else if (m.status === 'loading language traineddata') {
+          prog.innerHTML = `<div>正在加载中文识别模型... 请耐心等待</div><div class="bar"><div class="bar-fill" style="width:30%"></div></div>`;
+        }
+      }
+    });
+    const { data: { text } } = await worker.recognize(dataURL);
+    await worker.terminate();
+
+    prog.innerHTML = '<div style="color:#10B981;">识别完成 ✓</div>';
+
+    if (text && text.trim()) {
+      applyParseResult(text.trim(), 'imageParseResult');
+    } else {
+      document.getElementById('imageParseResult').innerHTML = '<span style="color:var(--eliminated)">未识别到文字，请尝试更清晰的截图或使用"粘贴简历"手动输入</span>';
+    }
+  } catch(err) {
+    console.error('OCR error:', err);
+    prog.innerHTML = `<div style="color:var(--eliminated)">识别失败: ${err.message}</div><div style="font-size:12px;color:var(--text3);margin-top:4px;">建议改用"粘贴简历"标签页手动粘贴文本</div>`;
+  }
+}
+
+// ============================================================
+// 文档上传识别（PDF / Word）
+// ============================================================
+function handleDocFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const name = file.name.toLowerCase();
+  const prog = document.getElementById('docProgress');
+
+  if (name.endsWith('.pdf')) {
+    parsePDF(file);
+  } else if (name.endsWith('.docx') || name.endsWith('.doc')) {
+    parseWord(file);
+  } else {
+    showToast('不支持的文件格式，请上传 PDF 或 Word 文档');
+  }
+  event.target.value = '';
+}
+
+async function parsePDF(file) {
+  const prog = document.getElementById('docProgress');
+  prog.style.display = 'block';
+  prog.innerHTML = '<div>正在解析 PDF...</div><div class="bar"><div class="bar-fill" style="width:20%"></div></div>';
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    let fullText = '';
+
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map(item => item.str).join(' ');
+      fullText += pageText + '\n';
+      const pct = Math.round((i / pdf.numPages) * 80) + 20;
+      prog.innerHTML = `<div>正在提取第 ${i}/${pdf.numPages} 页...</div><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>`;
+    }
+
+    prog.innerHTML = '<div style="color:#10B981;">PDF 解析完成 ✓</div>';
+
+    if (fullText.trim()) {
+      applyParseResult(fullText.trim(), 'docParseResult');
+    } else {
+      document.getElementById('docParseResult').innerHTML =
+        '<span style="color:var(--eliminated)">PDF 未提取到文字（可能是扫描件），建议用"截图识别"功能</span>';
+    }
+  } catch(err) {
+    console.error('PDF parse error:', err);
+    prog.innerHTML = `<div style="color:var(--eliminated)">PDF 解析失败: ${err.message}</div>`;
+  }
+}
+
+async function parseWord(file) {
+  const prog = document.getElementById('docProgress');
+  prog.style.display = 'block';
+  prog.innerHTML = '<div>正在解析 Word 文档...</div><div class="bar"><div class="bar-fill" style="width:30%"></div></div>';
+
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    prog.innerHTML = '<div style="color:#10B981;">Word 解析完成 ✓</div>';
+
+    if (result.value && result.value.trim()) {
+      applyParseResult(result.value.trim(), 'docParseResult');
+    } else {
+      document.getElementById('docParseResult').innerHTML =
+        '<span style="color:var(--eliminated)">Word 文档未提取到文字</span>';
+    }
+  } catch(err) {
+    console.error('Word parse error:', err);
+    prog.innerHTML = `<div style="color:var(--eliminated)">Word 解析失败: ${err.message}</div>`;
+  }
+}
+
+// 拖拽上传支持
+document.addEventListener('dragover', (e) => {
+  if (currentTab !== 'upload') return;
+  e.preventDefault();
+  document.getElementById('uploadZone')?.classList.add('dragover');
+});
+document.addEventListener('dragleave', () => {
+  document.getElementById('uploadZone')?.classList.remove('dragover');
+});
+document.addEventListener('drop', (e) => {
+  if (currentTab !== 'upload') return;
+  e.preventDefault();
+  document.getElementById('uploadZone')?.classList.remove('dragover');
+  const file = e.dataTransfer?.files[0];
+  if (file) {
+    const name = file.name.toLowerCase();
+    if (name.endsWith('.pdf') || name.endsWith('.docx') || name.endsWith('.doc')) {
+      const input = document.getElementById('docFileInput');
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      handleDocFile({ target: { files: input.files, value: '' } });
+    }
+  }
+});
+
+// ============================================================
+// 复盘总结（周度 / 月度 / 年度）
+// ============================================================
+function openSummaryModal() {
+  document.getElementById('summaryModal').classList.add('show');
+  currentSummaryTab = 'weekly';
+  switchSummaryTab('weekly');
+}
+
+function switchSummaryTab(tab) {
+  currentSummaryTab = tab;
+  document.querySelectorAll('#summaryModal .tab').forEach(t => t.classList.remove('active'));
+  const tabEl = document.querySelector(`#summaryModal .tab[data-tab="${tab}"]`);
+  if (tabEl) tabEl.classList.add('active');
+  renderSummary();
+}
+
+function getDateRange(tab) {
+  const now = new Date();
+  let start, end, label;
+
+  if (tab === 'weekly') {
+    const day = now.getDay() || 7;
+    start = new Date(now);
+    start.setDate(now.getDate() - day + 1);
+    start.setHours(0, 0, 0, 0);
+    end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    end.setHours(23, 59, 59, 999);
+    label = `${start.getFullYear()}年第${getWeekNumber(start)}周`;
+  } else if (tab === 'monthly') {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    label = `${now.getFullYear()}年${now.getMonth() + 1}月`;
+  } else {
+    start = new Date(now.getFullYear(), 0, 1);
+    end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+    label = `${now.getFullYear()}年`;
+  }
+
+  return { start, end, label };
+}
+
+function getWeekNumber(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+}
+
+function renderSummary() {
+  const { start, end, label } = getDateRange(currentSummaryTab);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // 新增岗位
+  const newPositions = data.positions.filter(p => {
+    const t = new Date(p.createdAt).getTime();
+    return t >= startMs && t <= endMs;
+  });
+
+  // 新增人选
+  const newCandidates = data.candidates.filter(c => {
+    const t = new Date(c.createdAt).getTime();
+    return t >= startMs && t <= endMs;
+  });
+
+  // 面试人数（已面试 + offer）
+  const interviewedCount = newCandidates.filter(c =>
+    c.status === 'interviewed' || c.status === 'offer'
+  ).length;
+
+  // offer人数
+  const offerCount = newCandidates.filter(c => c.status === 'offer').length;
+
+  // 按岗位分组统计
+  const posMap = new Map();
+  newCandidates.forEach(c => {
+    const posName = data.positions.find(p => p.id === c.positionId)?.name || '未知岗位';
+    if (!posMap.has(posName)) posMap.set(posName, { total: 0, interviewed: 0, offer: 0 });
+    const s = posMap.get(posName);
+    s.total++;
+    if (c.status === 'interviewed' || c.status === 'offer') s.interviewed++;
+    if (c.status === 'offer') s.offer++;
+  });
+
+  const dateStr = `${start.toLocaleDateString('zh-CN')} ~ ${end.toLocaleDateString('zh-CN')}`;
+
+  let html = `
+    <div class="summary-card">
+      <h3>${label} <span style="font-size:12px;font-weight:400;color:var(--text3)">${dateStr}</span></h3>
+      <div class="summary-stats">
+        <div class="summary-stat">
+          <div class="num" style="color:var(--primary)">${newPositions.length}</div>
+          <div class="lbl">新增岗位</div>
+        </div>
+        <div class="summary-stat">
+          <div class="num" style="color:var(--contacted)">${newCandidates.length}</div>
+          <div class="lbl">盘点人选</div>
+        </div>
+        <div class="summary-stat">
+          <div class="num" style="color:var(--interviewed)">${interviewedCount}</div>
+          <div class="lbl">面试人数</div>
+        </div>
+        <div class="summary-stat">
+          <div class="num" style="color:var(--offer)">${offerCount}</div>
+          <div class="lbl">offer人数</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (newPositions.length > 0) {
+    html += '<div class="summary-card"><h3>新增岗位明细</h3>';
+    newPositions.forEach(p => {
+      const posCandidates = newCandidates.filter(c => c.positionId === p.id);
+      const posInterviewed = posCandidates.filter(c => c.status === 'interviewed' || c.status === 'offer').length;
+      const posOffer = posCandidates.filter(c => c.status === 'offer').length;
+      html += `<div class="pos-item">
+        <span>${esc(p.name)} <span style="color:var(--text3);font-size:12px">${new Date(p.createdAt).toLocaleDateString('zh-CN')}</span></span>
+        <span class="count">${posCandidates.length} 人 · 面试 ${posInterviewed} · offer ${posOffer}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  if (posMap.size > 0) {
+    html += '<div class="summary-card"><h3>各岗位盘点统计</h3>';
+    posMap.forEach((stats, posName) => {
+      html += `<div class="pos-item">
+        <span>${esc(posName)}</span>
+        <span class="count">${stats.total} 人 · 面试 ${stats.interviewed} · offer ${stats.offer}</span>
+      </div>`;
+    });
+    html += '</div>';
+  }
+
+  if (newPositions.length === 0 && newCandidates.length === 0) {
+    html += '<div class="empty-state"><div class="big">&#x1F4ED;</div><div>本周期暂无数据</div></div>';
+  }
+
+  document.getElementById('summaryContent').innerHTML = html;
+}
+
+// ============================================================
+// 导出 / 导入
+// ============================================================
 function closeModal(id) { document.getElementById(id).classList.remove('show'); }
 function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
@@ -982,7 +1517,7 @@ function renderGraph() {
       .attr('x', b.coX - companyW/2).attr('y', b.coY + 4)
       .attr('text-anchor', 'middle').attr('fill', '#fff')
       .attr('font-size', 13).attr('font-weight', 700)
-      .text(isCollapsed ? '+' : '−');
+      .text(isCollapsed ? '+' : '\u2212');
     gCo.append('circle')
       .attr('cx', b.coX + companyW/2 - 2).attr('cy', b.coY - companyH/2 + 2)
       .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
@@ -1021,7 +1556,7 @@ function renderGraph() {
       gC.append('text')
         .attr('x', sx + 16).attr('y', sy + 17)
         .attr('fill', '#1F2937').attr('font-size', 13).attr('font-weight', 600)
-        .text(m.name + (m.gender ? '（'+m.gender+'）' : ''));
+        .text(m.name + (m.gender ? '\uff08'+m.gender+'\uff09' : ''));
       gC.append('text')
         .attr('x', sx + 16).attr('y', sy + 34)
         .attr('fill', '#6B7280').attr('font-size', 11)
@@ -1073,7 +1608,6 @@ window.addEventListener('resize', () => {
       console.warn('Auto-connect failed:', e);
     }
   }
-  // Show setup modal only if auto-connect failed
   document.getElementById('setupModal').style.display = 'flex';
 })();
 </script>
