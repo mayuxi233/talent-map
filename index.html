@@ -145,7 +145,7 @@ body {
 </head>
 <body>
 
-<div class="modal-overlay" id="setupModal" style="display:flex;">
+<div class="modal-overlay" id="setupModal" style="display:none;">
   <div class="modal" style="width:480px;">
     <div class="modal-header" style="border-radius:16px 16px 0 0;"><h2>配置数据库连接</h2></div>
     <div class="modal-body">
@@ -172,7 +172,7 @@ body {
   <div class="stat"><span class="num" id="stat-new" style="color:var(--new)">0</span><span class="lbl">待联系</span></div>
   <div class="stat"><span class="num" id="stat-companies">0</span><span class="lbl">家公司</span></div>
   <div class="sep"></div>
-  <div id="apiStatus" class="stat" style="color:#10B981;font-size:12px;">● 已连接</div>
+  <div id="apiStatus" class="stat" style="color:#9CA3AF;font-size:12px;">● 连接中...</div>
   <div class="right">
     <button class="btn sm" onclick="exportData()">导出备份</button>
     <label class="btn sm" style="cursor:pointer;">导入备份<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
