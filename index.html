@@ -1,0 +1,1055 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>人才盘点工具</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root {
+  --bg: #F8F9FA;
+  --card: #FFFFFF;
+  --border: #E5E7EB;
+  --text: #1F2937;
+  --text2: #6B7280;
+  --text3: #9CA3AF;
+  --primary: #4F46E5;
+  --primary-light: #EEF2FF;
+  --radius: 10px;
+  --new: #9CA3AF;
+  --contacted: #3B82F6;
+  --interviewing: #F59E0B;
+  --passed: #10B981;
+  --rejected: #EF4444;
+  --src-lp: #8B5CF6;
+  --src-mm: #3B82F6;
+  --src-bs: #10B981;
+  --src-rec: #F59E0B;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text); height: 100vh; overflow: hidden;
+  font-size: 14px; line-height: 1.5;
+}
+
+.header {
+  height: 56px; background: var(--card); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 20px; gap: 16px; z-index: 10; position: relative;
+}
+.header h1 { font-size: 17px; font-weight: 600; color: var(--primary); white-space: nowrap; }
+.header .sep { width: 1px; height: 24px; background: var(--border); }
+.header .stat { display: flex; align-items: center; gap: 4px; font-size: 13px; }
+.header .stat .num { font-weight: 600; font-size: 16px; }
+.header .stat .lbl { color: var(--text2); font-size: 12px; }
+.header .right { margin-left: auto; display: flex; gap: 8px; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border-radius: 7px; border: 1px solid var(--border);
+  background: var(--card); color: var(--text); font-size: 13px;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap; font-family: inherit;
+}
+.btn:hover { background: var(--primary-light); border-color: var(--primary); color: var(--primary); }
+.btn.primary { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn.primary:hover { background: #4338CA; }
+.btn.sm { padding: 4px 10px; font-size: 12px; }
+.btn.danger { color: var(--rejected); }
+.btn.danger:hover { background: #FEF2F2; border-color: var(--rejected); }
+
+.layout { display: flex; height: calc(100vh - 56px); }
+
+.sidebar {
+  width: 340px; min-width: 340px; background: var(--card);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden;
+}
+.sidebar-top { padding: 14px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+.pos-select { display: flex; gap: 8px; align-items: center; }
+.pos-select select { flex: 1; padding: 7px 10px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; font-family: inherit; background: var(--bg); }
+.search-box { position: relative; }
+.search-box input { width: 100%; padding: 8px 32px 8px 12px; border: 1px solid var(--border); border-radius: 7px; font-size: 13px; font-family: inherit; }
+.search-box .icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 14px; }
+
+.filter-row { display: flex; gap: 4px; flex-wrap: wrap; }
+.filter-chip { padding: 3px 10px; border-radius: 20px; font-size: 12px; border: 1px solid var(--border); cursor: pointer; background: var(--bg); transition: all 0.15s; }
+.filter-chip.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.filter-chip[data-status="new"].active { background: var(--new); border-color: var(--new); }
+.filter-chip[data-status="contacted"].active { background: var(--contacted); border-color: var(--contacted); }
+.filter-chip[data-status="interviewing"].active { background: var(--interviewing); border-color: var(--interviewing); }
+.filter-chip[data-status="passed"].active { background: var(--passed); border-color: var(--passed); }
+.filter-chip[data-status="rejected"].active { background: var(--rejected); border-color: var(--rejected); }
+
+.candidate-list { flex: 1; overflow-y: auto; padding: 8px; }
+.candidate-card {
+  padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);
+  margin-bottom: 6px; cursor: pointer; transition: all 0.15s; background: var(--card);
+}
+.candidate-card:hover { border-color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+.candidate-card.selected { border-color: var(--primary); background: var(--primary-light); }
+.candidate-card .name { font-weight: 600; font-size: 14px; }
+.candidate-card .info { font-size: 12px; color: var(--text2); margin-top: 2px; display: flex; align-items: center; gap: 6px; }
+.candidate-card .src-tag { font-size: 11px; padding: 1px 8px; border-radius: 4px; font-weight: 500; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text3); }
+.empty-state .big { font-size: 40px; margin-bottom: 10px; }
+
+.main { flex: 1; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+.graph-container { flex: 1; position: relative; overflow: auto; }
+.graph-legend { position: absolute; bottom: 16px; left: 16px; display: flex; gap: 12px; background: var(--card); padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border); font-size: 12px; z-index: 5; }
+.graph-legend span { display: flex; align-items: center; gap: 5px; }
+.graph-legend .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 100; align-items: center; justify-content: center; }
+.modal-overlay.show { display: flex; }
+.modal { background: var(--card); border-radius: 16px; width: 680px; max-height: 85vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+.modal-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; background: var(--card); z-index: 1; border-radius: 16px 16px 0 0; }
+.modal-header h2 { font-size: 16px; font-weight: 600; }
+.modal-body { padding: 20px 24px; }
+.modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text3); padding: 4px; }
+
+.form-group { margin-bottom: 14px; }
+.form-group label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.form-group input, .form-group select, .form-group textarea {
+  width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 7px;
+  font-size: 13px; font-family: inherit; transition: border-color 0.15s;
+}
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus { outline: none; border-color: var(--primary); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+
+.edu-entry, .work-entry { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+.entry-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: var(--text2); }
+
+.tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+.tab { padding: 8px 16px; cursor: pointer; font-size: 13px; color: var(--text2); border-bottom: 2px solid transparent; transition: all 0.15s; }
+.tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+.resume-paste { width: 100%; min-height: 160px; font-size: 13px; font-family: 'SF Mono', 'Menlo', monospace; }
+
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.detail-item .lbl { font-size: 11px; color: var(--text3); }
+.detail-item .val { font-size: 14px; }
+.detail-section { margin-top: 16px; }
+.detail-section h4 { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.timeline-item { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.timeline-item:last-child { border-bottom: none; }
+.timeline-item .period { color: var(--text3); font-size: 12px; }
+
+.toast { position: fixed; top: 20px; right: 20px; background: #1F2937; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+.toast.show { opacity: 1; }
+
+.setup-banner { padding: 12px 20px; background: #FEF3C7; border-bottom: 1px solid #FCD34D; font-size: 13px; display: none; text-align: center; }
+.setup-banner a { color: var(--primary); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="modal-overlay" id="setupModal" style="display:flex;">
+  <div class="modal" style="width:480px;">
+    <div class="modal-header" style="border-radius:16px 16px 0 0;"><h2>配置数据库连接</h2></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">需要先创建 Supabase 项目，然后将 URL 和 Key 填入下方。只需配置一次。</p>
+      <div class="form-group"><label>Supabase URL</label><input type="text" id="cfgUrl" placeholder="https://xxxxx.supabase.co"></div>
+      <div class="form-group"><label>anon Key</label><input type="text" id="cfgKey" placeholder="eyJhbG..."></div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+        <strong>还没创建？</strong> <a href="https://supabase.com" target="_blank" style="color:var(--primary);">去 Supabase 注册 →</a> 创建项目后，在 Settings → API 中复制 URL 和 anon key。然后在 SQL Editor 中执行 supabase-schema.sql。
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn" onclick="skipSetup()">跳过（离线模式）</button>
+        <button class="btn primary" onclick="saveSetup()">连接</button>
+      </div>
+      <div id="setupError" style="color:var(--rejected);font-size:12px;margin-top:8px;display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="header">
+  <h1>人才盘点</h1>
+  <div class="sep"></div>
+  <div class="stat"><span class="num" id="stat-total">0</span><span class="lbl">总人选</span></div>
+  <div class="stat"><span class="num" id="stat-contacted" style="color:var(--contacted)">0</span><span class="lbl">已联系</span></div>
+  <div class="stat"><span class="num" id="stat-new" style="color:var(--new)">0</span><span class="lbl">待联系</span></div>
+  <div class="stat"><span class="num" id="stat-companies">0</span><span class="lbl">家公司</span></div>
+  <div class="sep"></div>
+  <div id="apiStatus" class="stat" style="color:#10B981;font-size:12px;">● 已连接</div>
+  <div class="right">
+    <button class="btn sm" onclick="exportData()">导出备份</button>
+    <label class="btn sm" style="cursor:pointer;">导入备份<input type="file" accept=".json" onchange="importData(event)" style="display:none"></label>
+    <button class="btn primary" onclick="openAddModal()">+ 录入人选</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="sidebar">
+    <div class="sidebar-top">
+      <div class="pos-select">
+        <select id="posSelect" onchange="switchPosition()"><option value="">-- 选择岗位 --</option></select>
+        <button class="btn sm" onclick="addPosition()">+</button>
+      </div>
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索姓名、公司、学校..." oninput="renderCandidates()">
+        <span class="icon">&#x1F50D;</span>
+      </div>
+      <div class="filter-row" id="filterRow">
+        <span class="filter-chip active" data-status="all" onclick="setFilter('all')">全部</span>
+        <span class="filter-chip" data-status="new" onclick="setFilter('new')">待联系</span>
+        <span class="filter-chip" data-status="contacted" onclick="setFilter('contacted')">已联系</span>
+        <span class="filter-chip" data-status="interviewing" onclick="setFilter('interviewing')">面试中</span>
+        <span class="filter-chip" data-status="passed" onclick="setFilter('passed')">已通过</span>
+        <span class="filter-chip" data-status="rejected" onclick="setFilter('rejected')">已淘汰</span>
+      </div>
+    </div>
+    <div class="candidate-list" id="candidateList">
+      <div class="empty-state"><div class="big">&#x1F4CB;</div><div>加载中...</div></div>
+    </div>
+  </div>
+  <div class="main">
+    <div class="graph-container" id="graphContainer">
+      <div class="graph-legend">
+        <span><span class="dot" style="background:var(--new)"></span>待联系</span>
+        <span><span class="dot" style="background:var(--contacted)"></span>已联系</span>
+        <span><span class="dot" style="background:var(--interviewing)"></span>面试中</span>
+        <span><span class="dot" style="background:var(--passed)"></span>已通过</span>
+        <span><span class="dot" style="background:var(--rejected)"></span>已淘汰</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">录入人选</h2>
+      <button class="modal-close" onclick="closeModal('addModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('form')">手动填写</div>
+        <div class="tab" onclick="switchTab('paste')">粘贴简历文本</div>
+      </div>
+      <div id="tab-form">
+        <div class="form-group"><label>所属岗位</label><select id="formPosition"></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>姓名 *</label><input type="text" id="formName" placeholder="必填"></div>
+          <div class="form-group"><label>性别</label><select id="formGender"><option value="">未知</option><option>男</option><option>女</option></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>手机</label><input type="text" id="formPhone"></div>
+          <div class="form-group"><label>邮箱</label><input type="text" id="formEmail"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>当前公司</label><input type="text" id="formCurCompany"></div>
+          <div class="form-group"><label>当前岗位</label><input type="text" id="formCurPosition"></div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group"><label>联系状态</label>
+            <select id="formStatus">
+              <option value="new">待联系</option><option value="contacted">已联系</option>
+              <option value="interviewing">面试中</option><option value="passed">已通过</option><option value="rejected">已淘汰</option>
+            </select>
+          </div>
+          <div class="form-group"><label>来源渠道</label>
+            <select id="formSource">
+              <option value="lp">猎头</option><option value="mm">脉脉</option>
+              <option value="bs">Boss</option><option value="rec">内推</option><option value="other">其他</option>
+            </select>
+          </div>
+          <div class="form-group"><label>工作年限</label><input type="text" id="formYears" placeholder="自动计算/手动填"></div>
+        </div>
+        <div class="form-group"><label>教育经历</label><div id="eduEntries"></div>
+          <button class="btn sm" onclick="addEduEntry()" style="margin-top:4px">+ 添加教育经历</button>
+        </div>
+        <div class="form-group"><label>工作经历</label><div id="workEntries"></div>
+          <button class="btn sm" onclick="addWorkEntry()" style="margin-top:4px">+ 添加工作经历</button>
+        </div>
+        <div class="form-group"><label>备注</label><textarea id="formNotes" rows="2"></textarea></div>
+      </div>
+      <div id="tab-paste" style="display:none">
+        <div class="form-group"><label>粘贴简历全文（系统自动解析）</label>
+          <textarea class="resume-paste" id="pasteArea" placeholder="在此粘贴简历文本内容..."></textarea>
+        </div>
+        <button class="btn primary" onclick="parseResume()">智能解析</button>
+        <div id="parseResult" style="margin-top:12px; font-size:13px; color:var(--text2)"></div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--border)">
+        <button class="btn" onclick="closeModal('addModal')">取消</button>
+        <button class="btn primary" id="saveBtn" onclick="saveCandidate()">保存</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="detailName">人选详情</h2>
+      <button class="modal-close" onclick="closeModal('detailModal')">&times;</button>
+    </div>
+    <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+// Supabase 客户端初始化
+// ============================================================
+let supabase = null;
+
+function getConfig() {
+  try { return JSON.parse(localStorage.getItem('talent_map_supabase') || '{}'); } catch(e) { return {}; }
+}
+
+async function saveSetup() {
+  const url = document.getElementById('cfgUrl').value.trim();
+  const key = document.getElementById('cfgKey').value.trim();
+  if (!url || !key) {
+    document.getElementById('setupError').style.display = 'block';
+    document.getElementById('setupError').textContent = '请填写 URL 和 Key';
+    return;
+  }
+  try {
+    supabase = window.supabase.createClient(url, key);
+    const { error } = await supabase.from('positions').select('count', { count: 'exact', head: true });
+    if (error) throw error;
+    localStorage.setItem('talent_map_supabase', JSON.stringify({ url, key }));
+    document.getElementById('setupModal').style.display = 'none';
+    document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
+    await loadData();
+    if (data.positions.length > 0) currentPositionId = data.positions[0].id;
+    refreshAll();
+    showToast('连接成功');
+  } catch(e) {
+    document.getElementById('setupError').style.display = 'block';
+    document.getElementById('setupError').textContent = '连接失败: ' + (e.message || '请检查 URL 和 Key 是否正确，以及是否已执行 SQL schema');
+  }
+}
+
+function skipSetup() {
+  document.getElementById('setupModal').style.display = 'none';
+  document.getElementById('apiStatus').innerHTML = '<span style="color:#EF4444;">● 离线</span>';
+  document.getElementById('candidateList').innerHTML =
+    '<div class="empty-state"><div class="big">&#x26A0;</div><div>未连接数据库<br><small>刷新页面重新配置，或使用离线模式</small></div></div>';
+}
+
+// ============================================================
+// 数据层 —— camelCase ↔ snake_case 转换
+// ============================================================
+function toDB(c) {
+  return {
+    position_id: c.positionId,
+    name: c.name,
+    gender: c.gender,
+    phone: c.phone,
+    email: c.email,
+    current_company: c.currentCompany,
+    current_position: c.currentPosition,
+    status: c.status,
+    source: c.source,
+    manual_years: c.manualYears,
+    education: c.education || [],
+    work_experience: c.workExperience || [],
+    notes: c.notes,
+    resume_raw: c.resumeRaw
+  };
+}
+
+function fromDB(row) {
+  return {
+    id: row.id,
+    positionId: row.position_id,
+    name: row.name,
+    gender: row.gender,
+    phone: row.phone,
+    email: row.email,
+    currentCompany: row.current_company,
+    currentPosition: row.current_position,
+    status: row.status,
+    source: row.source,
+    manualYears: row.manual_years,
+    education: row.education || [],
+    workExperience: row.work_experience || [],
+    notes: row.notes,
+    resumeRaw: row.resume_raw,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+// ============================================================
+// 数据操作
+// ============================================================
+let data = { positions: [], candidates: [] };
+let currentPositionId = '';
+let currentFilter = 'all';
+let collapsedCompanies = new Set();
+let editingId = null;
+
+const STATUS = { new:'待联系', contacted:'已联系', interviewing:'面试中', passed:'已通过', rejected:'已淘汰' };
+const STATUS_COLORS = { new:'#9CA3AF', contacted:'#3B82F6', interviewing:'#F59E0B', passed:'#10B981', rejected:'#EF4444' };
+const SOURCE = { lp:'猎头', mm:'脉脉', bs:'Boss', rec:'内推', other:'其他' };
+const SOURCE_COLORS = { lp:'#8B5CF6', mm:'#3B82F6', bs:'#10B981', rec:'#F59E0B', other:'#6B7280' };
+
+async function loadData() {
+  if (!supabase) return;
+  try {
+    const { data: positions, error: perr } = await supabase.from('positions').select('*').order('created_at');
+    if (perr) throw perr;
+    data.positions = positions.map(p => ({ id: p.id, name: p.name, createdAt: p.created_at }));
+
+    data.candidates = [];
+    for (const p of data.positions) {
+      const { data: cs, error: cerr } = await supabase.from('candidates').select('*').eq('position_id', p.id).order('created_at');
+      if (cerr) throw cerr;
+      data.candidates.push(...cs.map(fromDB));
+    }
+    document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
+  } catch(e) {
+    console.error('数据加载失败:', e);
+    document.getElementById('apiStatus').innerHTML = '<span style="color:#EF4444;">● 连接失败</span>';
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+function getCandidates() {
+  return data.candidates.filter(c => c.positionId === currentPositionId);
+}
+
+function calcWorkYears(c) {
+  if (!c.workExperience || !c.workExperience.length) return null;
+  const starts = c.workExperience
+    .map(w => { const m = (w.startDate||'').match(/(\d{4})/); return m ? parseInt(m[1]) : null; })
+    .filter(Boolean);
+  if (!starts.length) return null;
+  const earliest = Math.min(...starts);
+  const now = new Date().getFullYear();
+  return now - earliest;
+}
+
+function fmtYears(c) {
+  const y = (c.manualYears != null && c.manualYears !== '') ? parseInt(c.manualYears) : calcWorkYears(c);
+  if (y == null) return '?年';
+  return y + '年';
+}
+
+function refreshAll() {
+  renderPositionSelect();
+  renderCandidates();
+  updateStats();
+  renderGraph();
+}
+
+function renderPositionSelect() {
+  const sel = document.getElementById('posSelect');
+  sel.innerHTML = '<option value="">-- 选择岗位 --</option>';
+  data.positions.forEach(p => {
+    sel.innerHTML += `<option value="${p.id}" ${p.id===currentPositionId?'selected':''}>${esc(p.name)}</option>`;
+  });
+  const fsel = document.getElementById('formPosition');
+  if (fsel) {
+    fsel.innerHTML = '';
+    data.positions.forEach(p => {
+      fsel.innerHTML += `<option value="${p.id}" ${p.id===currentPositionId?'selected':''}>${esc(p.name)}</option>`;
+    });
+  }
+}
+
+async function addPosition() {
+  const name = prompt('请输入岗位名称（如：高级前端工程师）：');
+  if (!name || !name.trim()) return;
+  try {
+    const { data: p, error } = await supabase.from('positions').insert({ name: name.trim() }).select().single();
+    if (error) throw error;
+    data.positions.push({ id: p.id, name: p.name, createdAt: p.created_at });
+    currentPositionId = p.id;
+  } catch(e) { showToast('创建失败: ' + e.message); return; }
+  refreshAll();
+  showToast('岗位已添加');
+}
+
+function switchPosition() {
+  currentPositionId = document.getElementById('posSelect').value;
+  currentFilter = 'all';
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  const allChip = document.querySelector('.filter-chip[data-status="all"]');
+  if (allChip) allChip.classList.add('active');
+  editingId = null;
+  refreshAll();
+}
+
+function setFilter(status) {
+  currentFilter = status;
+  document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+  const el = document.querySelector(`.filter-chip[data-status="${status}"]`);
+  if (el) el.classList.add('active');
+  renderCandidates();
+}
+
+function updateStats() {
+  const cs = getCandidates();
+  document.getElementById('stat-total').textContent = cs.length;
+  document.getElementById('stat-contacted').textContent = cs.filter(c => c.status !== 'new').length;
+  document.getElementById('stat-new').textContent = cs.filter(c => c.status === 'new').length;
+  const companies = new Set(cs.map(c => c.currentCompany).filter(Boolean));
+  document.getElementById('stat-companies').textContent = companies.size;
+}
+
+function renderCandidates() {
+  const list = document.getElementById('candidateList');
+  const search = (document.getElementById('searchInput')?.value || '').toLowerCase();
+  let cs = getCandidates();
+  if (currentFilter !== 'all') cs = cs.filter(c => c.status === currentFilter);
+  if (search) cs = cs.filter(c =>
+    c.name.toLowerCase().includes(search) ||
+    (c.currentCompany||'').toLowerCase().includes(search) ||
+    (c.currentPosition||'').toLowerCase().includes(search) ||
+    c.education.some(e => (e.school||'').toLowerCase().includes(search))
+  );
+
+  if (!currentPositionId) {
+    list.innerHTML = '<div class="empty-state"><div class="big">&#x1F4CC;</div><div>请先选择或创建一个岗位</div></div>';
+    return;
+  }
+  if (cs.length === 0) {
+    list.innerHTML = '<div class="empty-state"><div class="big">&#x1F4CB;</div><div>暂无匹配人选</div></div>';
+    return;
+  }
+
+  const srcCls = s => `background:${SOURCE_COLORS[s]||'#6B7280'};color:#fff;`;
+
+  list.innerHTML = cs.map(c =>
+    `<div class="candidate-card ${editingId===c.id?'selected':''}" onclick="selectCandidate('${c.id}')">
+      <div style="display:flex;align-items:center;gap:8px;justify-content:space-between">
+        <span class="name">${esc(c.name)}</span>
+        <span style="font-size:11px;color:${STATUS_COLORS[c.status]}">${STATUS[c.status]}</span>
+      </div>
+      <div class="info">
+        <span>${esc(c.currentCompany||'?')} · ${esc(c.currentPosition||'?')}</span>
+        <span style="color:var(--text3)">${fmtYears(c)}</span>
+        <span class="src-tag" style="${srcCls(c.source)}">${SOURCE[c.source]||'其他'}</span>
+      </div>
+      <div class="info">${esc((c.gender||'') + (c.gender?' · ':'') + (c.education[0]?.school||'') + (c.education[0]?.degree?' ':'') + (c.education[0]?.degree||''))}</div>
+    </div>`
+  ).join('');
+}
+
+function selectCandidate(id) {
+  editingId = id;
+  renderCandidates();
+  showCandidateDetail(id);
+}
+
+function showCandidateDetail(id) {
+  const c = data.candidates.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('detailName').textContent = c.name + ' - 详情';
+  let html = `<div class="detail-grid">
+    <div class="detail-item"><div class="lbl">姓名</div><div class="val">${esc(c.name)}</div></div>
+    <div class="detail-item"><div class="lbl">性别</div><div class="val">${esc(c.gender||'未知')}</div></div>
+    <div class="detail-item"><div class="lbl">手机</div><div class="val">${esc(c.phone||'--')}</div></div>
+    <div class="detail-item"><div class="lbl">邮箱</div><div class="val">${esc(c.email||'--')}</div></div>
+    <div class="detail-item"><div class="lbl">当前公司</div><div class="val">${esc(c.currentCompany||'--')}</div></div>
+    <div class="detail-item"><div class="lbl">当前岗位</div><div class="val">${esc(c.currentPosition||'--')}</div></div>
+    <div class="detail-item"><div class="lbl">工作年限</div><div class="val">${fmtYears(c)}</div></div>
+    <div class="detail-item"><div class="lbl">来源</div><div class="val" style="color:${SOURCE_COLORS[c.source]||'#6B7280'}">${SOURCE[c.source]||'其他'}</div></div>
+    <div class="detail-item"><div class="lbl">状态</div><div class="val" style="color:${STATUS_COLORS[c.status]}">${STATUS[c.status]}</div></div>
+    <div class="detail-item"><div class="lbl">录入时间</div><div class="val">${new Date(c.createdAt).toLocaleDateString('zh-CN')}</div></div>
+  </div>`;
+  if (c.education.length) {
+    html += '<div class="detail-section"><h4>教育经历</h4>';
+    c.education.forEach(e => {
+      html += `<div class="timeline-item"><strong>${esc(e.school||'')}</strong> · ${esc(e.degree||'')} · ${esc(e.major||'')}<br><span class="period">${esc(e.startDate||'')} - ${esc(e.endDate||'')}</span></div>`;
+    });
+    html += '</div>';
+  }
+  if (c.workExperience.length) {
+    html += '<div class="detail-section"><h4>工作经历</h4>';
+    c.workExperience.forEach(w => {
+      html += `<div class="timeline-item"><strong>${esc(w.company||'')}</strong> · ${esc(w.position||'')}<br><span class="period">${esc(w.startDate||'')} - ${esc(w.endDate||'')}</span></div>`;
+    });
+    html += '</div>';
+  }
+  if (c.notes) {
+    html += `<div class="detail-section"><h4>备注</h4><div style="font-size:13px;white-space:pre-wrap">${esc(c.notes)}</div></div>`;
+  }
+  html += `<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px">
+    <button class="btn sm danger" onclick="deleteCandidate('${c.id}')">删除</button>
+    <button class="btn sm" onclick="closeModal('detailModal');openEditModal('${c.id}')">编辑</button>
+  </div>`;
+  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailModal').classList.add('show');
+}
+
+async function deleteCandidate(id) {
+  if (!confirm('确定删除该人选吗？此操作不可恢复。')) return;
+  try {
+    const { error } = await supabase.from('candidates').delete().eq('id', id);
+    if (error) throw error;
+  } catch(e) { showToast('删除失败: ' + e.message); return; }
+  data.candidates = data.candidates.filter(c => c.id !== id);
+  if (editingId === id) editingId = null;
+  closeModal('detailModal'); refreshAll();
+  showToast('已删除');
+}
+
+let currentTab = 'form';
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab')[tab==='form'?0:1].classList.add('active');
+  document.getElementById('tab-form').style.display = tab==='form'?'block':'none';
+  document.getElementById('tab-paste').style.display = tab==='paste'?'block':'none';
+}
+
+function openAddModal() {
+  if (!currentPositionId) { showToast('请先选择或创建一个岗位'); return; }
+  editingId = null;
+  document.getElementById('modalTitle').textContent = '录入人选';
+  document.getElementById('saveBtn').textContent = '保存';
+  resetForm();
+  if (currentTab !== 'form') switchTab('form');
+  renderPositionSelect();
+  document.getElementById('addModal').classList.add('show');
+}
+
+function openEditModal(id) {
+  editingId = id;
+  const c = data.candidates.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('modalTitle').textContent = '编辑人选';
+  document.getElementById('saveBtn').textContent = '更新';
+  if (currentTab !== 'form') switchTab('form');
+  document.getElementById('formPosition').value = c.positionId;
+  document.getElementById('formName').value = c.name;
+  document.getElementById('formGender').value = c.gender||'';
+  document.getElementById('formPhone').value = c.phone||'';
+  document.getElementById('formEmail').value = c.email||'';
+  document.getElementById('formCurCompany').value = c.currentCompany||'';
+  document.getElementById('formCurPosition').value = c.currentPosition||'';
+  document.getElementById('formStatus').value = c.status;
+  document.getElementById('formSource').value = c.source||'other';
+  document.getElementById('formYears').value = (c.manualYears != null) ? c.manualYears : (calcWorkYears(c)||'');
+  document.getElementById('formNotes').value = c.notes||'';
+  document.getElementById('pasteArea').value = c.resumeRaw||'';
+  buildEduEntries(c.education);
+  buildWorkEntries(c.workExperience);
+  document.getElementById('addModal').classList.add('show');
+}
+
+function resetForm() {
+  document.getElementById('formName').value = '';
+  document.getElementById('formGender').value = '';
+  document.getElementById('formPhone').value = '';
+  document.getElementById('formEmail').value = '';
+  document.getElementById('formCurCompany').value = '';
+  document.getElementById('formCurPosition').value = '';
+  document.getElementById('formStatus').value = 'new';
+  document.getElementById('formSource').value = 'lp';
+  document.getElementById('formYears').value = '';
+  document.getElementById('formNotes').value = '';
+  document.getElementById('pasteArea').value = '';
+  document.getElementById('parseResult').innerHTML = '';
+  buildEduEntries([]);
+  buildWorkEntries([]);
+}
+
+function buildEduEntries(list) {
+  const container = document.getElementById('eduEntries');
+  if (!list.length) list = [{school:'',degree:'',major:'',startDate:'',endDate:''}];
+  container.innerHTML = list.map((e,i) => `<div class="edu-entry">
+    <div class="entry-header"><span>教育经历 #${i+1}</span><button class="btn sm danger" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+    <div class="form-row"><div class="form-group"><label>学校</label><input value="${esc(e.school||'')}" data-key="school"></div><div class="form-group"><label>学历</label><input value="${esc(e.degree||'')}" data-key="degree"></div></div>
+    <div class="form-row"><div class="form-group"><label>专业</label><input value="${esc(e.major||'')}" data-key="major"></div><div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>开始</label><input value="${esc(e.startDate||'')}" data-key="startDate" placeholder="如 2019.09"></div><div class="form-group"><label>结束</label><input value="${esc(e.endDate||'')}" data-key="endDate" placeholder="如 2023.06"></div></div></div>
+  </div>`).join('');
+}
+
+function addEduEntry() {
+  const container = document.getElementById('eduEntries');
+  const div = document.createElement('div'); div.className = 'edu-entry';
+  div.innerHTML = `<div class="entry-header"><span>教育经历 #${container.children.length+1}</span><button class="btn sm danger" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+    <div class="form-row"><div class="form-group"><label>学校</label><input data-key="school"></div><div class="form-group"><label>学历</label><input data-key="degree"></div></div>
+    <div class="form-row"><div class="form-group"><label>专业</label><input data-key="major"></div><div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>开始</label><input data-key="startDate" placeholder="如 2019.09"></div><div class="form-group"><label>结束</label><input data-key="endDate" placeholder="如 2023.06"></div></div></div>`;
+  container.appendChild(div);
+}
+
+function buildWorkEntries(list) {
+  const container = document.getElementById('workEntries');
+  if (!list.length) list = [{company:'',position:'',startDate:'',endDate:''}];
+  container.innerHTML = list.map((w,i) => `<div class="work-entry">
+    <div class="entry-header"><span>工作经历 #${i+1}</span><button class="btn sm danger" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+    <div class="form-row"><div class="form-group"><label>公司</label><input value="${esc(w.company||'')}" data-key="company"></div><div class="form-group"><label>岗位</label><input value="${esc(w.position||'')}" data-key="position"></div></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>开始</label><input value="${esc(w.startDate||'')}" data-key="startDate" placeholder="如 2022.07"></div><div class="form-group"><label>结束</label><input value="${esc(w.endDate||'')}" data-key="endDate" placeholder="如 至今"></div></div>
+  </div>`).join('');
+}
+
+function addWorkEntry() {
+  const container = document.getElementById('workEntries');
+  const div = document.createElement('div'); div.className = 'work-entry';
+  div.innerHTML = `<div class="entry-header"><span>工作经历 #${container.children.length+1}</span><button class="btn sm danger" onclick="this.parentElement.parentElement.remove()">删除</button></div>
+    <div class="form-row"><div class="form-group"><label>公司</label><input data-key="company"></div><div class="form-group"><label>岗位</label><input data-key="position"></div></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="form-group"><label>开始</label><input data-key="startDate" placeholder="如 2022.07"></div><div class="form-group"><label>结束</label><input data-key="endDate" placeholder="如 至今"></div></div>`;
+  container.appendChild(div);
+}
+
+function collectEdu() {
+  const entries = document.querySelectorAll('#eduEntries .edu-entry');
+  return [...entries].map(e => {
+    const get = k => (e.querySelector(`[data-key="${k}"]`)?.value || '').trim();
+    return { school:get('school'), degree:get('degree'), major:get('major'), startDate:get('startDate'), endDate:get('endDate') };
+  }).filter(e => e.school || e.degree || e.major);
+}
+
+function collectWork() {
+  const entries = document.querySelectorAll('#workEntries .work-entry');
+  return [...entries].map(e => {
+    const get = k => (e.querySelector(`[data-key="${k}"]`)?.value || '').trim();
+    return { company:get('company'), position:get('position'), startDate:get('startDate'), endDate:get('endDate') };
+  }).filter(w => w.company || w.position);
+}
+
+async function saveCandidate() {
+  const name = document.getElementById('formName').value.trim();
+  if (!name) { showToast('请填写姓名'); return; }
+  const posId = document.getElementById('formPosition').value || currentPositionId;
+  const manualYears = document.getElementById('formYears').value.trim();
+
+  const candidate = {
+    positionId: posId, name,
+    gender: document.getElementById('formGender').value,
+    phone: document.getElementById('formPhone').value.trim(),
+    email: document.getElementById('formEmail').value.trim(),
+    currentCompany: document.getElementById('formCurCompany').value.trim(),
+    currentPosition: document.getElementById('formCurPosition').value.trim(),
+    status: document.getElementById('formStatus').value,
+    source: document.getElementById('formSource').value,
+    manualYears: manualYears ? parseInt(manualYears) : null,
+    education: collectEdu(),
+    workExperience: collectWork(),
+    notes: document.getElementById('formNotes').value.trim(),
+    resumeRaw: document.getElementById('pasteArea').value.trim()
+  };
+
+  try {
+    if (editingId) {
+      const { data: updated, error } = await supabase.from('candidates')
+        .update(toDB(candidate)).eq('id', editingId).select().single();
+      if (error) throw error;
+      const idx = data.candidates.findIndex(c => c.id === editingId);
+      if (idx >= 0) data.candidates[idx] = fromDB(updated);
+    } else {
+      const { data: created, error } = await supabase.from('candidates')
+        .insert(toDB(candidate)).select().single();
+      if (error) throw error;
+      data.candidates.push(fromDB(created));
+    }
+  } catch(e) { showToast('保存失败: ' + e.message); return; }
+
+  closeModal('addModal'); editingId = null;
+  refreshAll();
+  showToast('已保存');
+}
+
+function parseResume() {
+  const text = document.getElementById('pasteArea').value.trim();
+  if (!text) { showToast('请先粘贴简历文本'); return; }
+  const result = parseResumeText(text);
+  document.getElementById('formName').value = result.name || '';
+  document.getElementById('formGender').value = result.gender || '';
+  document.getElementById('formPhone').value = result.phone || '';
+  document.getElementById('formEmail').value = result.email || '';
+  document.getElementById('formCurCompany').value = result.currentCompany || '';
+  document.getElementById('formCurPosition').value = result.currentPosition || '';
+  buildEduEntries(result.education.length ? result.education : []);
+  buildWorkEntries(result.workExperience.length ? result.workExperience : []);
+  document.getElementById('parseResult').innerHTML =
+    `解析完成：姓名=${result.name||'未识别'}，电话=${result.phone||'未识别'}，邮箱=${result.email||'未识别'}，` +
+    `公司=${result.currentCompany||'未识别'}，教育 ${result.education.length} 条，工作 ${result.workExperience.length} 条。<br>如有遗漏请手动补填。`;
+  switchTab('form');
+  showToast('解析完成，请核对');
+}
+
+function parseResumeText(text) {
+  const result = { name:'', gender:'', phone:'', email:'', currentCompany:'', currentPosition:'', education:[], workExperience:[] };
+  const nameM = text.match(/(?:姓名|名字)[：:]\s*(.+)/);
+  if (nameM) result.name = nameM[1].trim();
+  else { const fl = text.split('\n')[0].trim(); if (fl.length <= 4 && !/[:：]/.test(fl)) result.name = fl; }
+  const gM = text.match(/(?:性别)[：:]\s*(.+)/);
+  if (gM) result.gender = gM[1].trim().includes('女') ? '女' : '男';
+  const pM = text.match(/1[3-9]\d{9}/); if (pM) result.phone = pM[0];
+  const eM = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/); if (eM) result.email = eM[0];
+
+  const lines = text.split('\n').map(l => l.trim()).filter(l => l);
+  let inEdu = false, inWork = false;
+  for (const line of lines) {
+    if (/教育(?:背景|经历|情况)/.test(line) || /学历/.test(line)) { inEdu = true; inWork = false; continue; }
+    if (/工作(?:经历|经验|背景)|实习经历/.test(line)) { inWork = true; inEdu = false; continue; }
+    if (/技能|证书|自我评价|获奖|项目/.test(line)) { inEdu = false; inWork = false; continue; }
+    if (inEdu) {
+      const m = line.match(/(\d{4}[.\-/年]\d{1,2})\s*[-~至到]\s*(\d{4}[.\-/年]\d{1,2}|至今|现在|目前)?\s*(.+)/);
+      if (m) { const rest = m[3]||''; const sm = rest.match(/(.+?(?:大学|学院|学校))/); result.education.push({ school:(sm?sm[1]:rest.split(/\s+/)[0]||''), degree:rest.includes('硕士')?'硕士':rest.includes('博士')?'博士':rest.includes('本科')?'本科':'', major:'', startDate:m[1], endDate:m[2]||'' }); }
+    }
+    if (inWork) {
+      const m = line.match(/(\d{4}[.\-/年]\d{1,2})\s*[-~至到]\s*(\d{4}[.\-/年]\d{1,2}|至今|现在|目前)?\s*(.+)/);
+      if (m) { const rest = m[3]||''; const parts = rest.split(/[，,、\s]+/).filter(p => p); result.workExperience.push({ company:parts[0]||'', position:parts[1]||'', startDate:m[1], endDate:m[2]||'' }); }
+    }
+  }
+  if (result.workExperience.length > 0) {
+    const last = result.workExperience[result.workExperience.length-1];
+    if (!last.endDate || /至今|现在/.test(last.endDate)) { result.currentCompany = last.company; result.currentPosition = last.position; }
+  }
+  return result;
+}
+
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+async function exportData() {
+  try {
+    const { data: positions, error: perr } = await supabase.from('positions').select('*').order('created_at');
+    if (perr) throw perr;
+    const { data: candidates, error: cerr } = await supabase.from('candidates').select('*').order('created_at');
+    if (cerr) throw cerr;
+    const exportObj = {
+      positions: positions.map(p => ({ id: p.id, name: p.name, createdAt: p.created_at })),
+      candidates: candidates.map(fromDB)
+    };
+    const blob = new Blob([JSON.stringify(exportObj,null,2)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=`talent-map-${new Date().toISOString().slice(0,10)}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    showToast('数据已导出');
+  } catch(e) { showToast('导出失败: ' + e.message); }
+}
+
+async function importData(e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    try {
+      const imp = JSON.parse(ev.target.result);
+      if (imp.positions && imp.candidates) {
+        // Import positions first
+        for (const p of imp.positions) {
+          const { error } = await supabase.from('positions').upsert({ id: p.id, name: p.name }).select();
+          if (error) throw error;
+        }
+        // Import candidates
+        for (const c of imp.candidates) {
+          const { error } = await supabase.from('candidates').upsert(toDB({...c, positionId: c.positionId})).select();
+          if (error) throw error;
+        }
+        await loadData(); refreshAll(); showToast('已导入 ' + imp.candidates.length + ' 条');
+      } else showToast('文件格式不正确');
+    } catch(ex) { showToast('导入失败: ' + ex.message); }
+  };
+  reader.readAsText(file); e.target.value='';
+}
+
+// ---- Radial Graph ----
+function renderGraph() {
+  const container = document.getElementById('graphContainer');
+  container.querySelector('svg')?.remove();
+  const pos = data.positions.find(p => p.id === currentPositionId);
+  const cs = currentFilter === 'all' ? getCandidates() : getCandidates().filter(c => c.status === currentFilter);
+  if (!pos || cs.length === 0) return;
+
+  const W = container.clientWidth;
+  const H = container.clientHeight;
+  const CX = W / 2;
+  const CY = H / 2;
+
+  const svg = d3.select('#graphContainer').append('svg');
+  const g = svg.append('g');
+
+  const zoom = d3.zoom().scaleExtent([0.4, 2]).on('zoom', (e) => g.attr('transform', e.transform));
+  svg.call(zoom);
+
+  const groups = new Map();
+  cs.forEach(c => {
+    const co = c.currentCompany || '未知公司';
+    if (!groups.has(co)) groups.set(co, []);
+    groups.get(co).push(c);
+  });
+  const companies = [...groups.keys()];
+  const n = companies.length;
+
+  const centerW = 200, centerH = 60;
+  const ringRadius = 200;
+  const companyW = 120, companyH = 34;
+  const cardW = 200, cardH = 48;
+  const cardGap = 8;
+
+  const maxBranchH = Math.max(...companies.map(co => groups.get(co).length * (cardH + cardGap)), 1);
+  const totalH = CY + ringRadius + companyH/2 + 20 + maxBranchH + 80;
+  const svgW = Math.max(W, 900);
+  const svgH = Math.max(H, totalH);
+  svg.attr('viewBox', `0 0 ${svgW} ${svgH}`).attr('width', '100%').attr('height', '100%');
+
+  const branches = [];
+  const anglePer = (2 * Math.PI) / n;
+
+  companies.forEach((co, i) => {
+    const angle = -Math.PI/2 + i * anglePer;
+    const coX = CX + ringRadius * Math.cos(angle);
+    const coY = CY + ringRadius * Math.sin(angle);
+    const members = groups.get(co);
+    const startY = coY + companyH/2 + 14;
+    const memberData = members.map((c, j) => ({ ...c, x: coX, y: startY + j * (cardH + cardGap) }));
+    branches.push({ company: co, coX, coY, members: memberData, count: members.length });
+  });
+
+  // Center node
+  g.append('rect')
+    .attr('x', CX - centerW/2).attr('y', CY - centerH/2)
+    .attr('width', centerW).attr('height', centerH)
+    .attr('rx', 14).attr('fill', '#4F46E5').attr('stroke', '#3730A3').attr('stroke-width', 2);
+  g.append('text')
+    .attr('x', CX).attr('y', CY - 4)
+    .attr('text-anchor', 'middle').attr('fill', '#fff')
+    .attr('font-size', 15).attr('font-weight', 600)
+    .text(pos.name);
+  g.append('text')
+    .attr('x', CX).attr('y', CY + 16)
+    .attr('text-anchor', 'middle').attr('fill', '#C7D2FE')
+    .attr('font-size', 12)
+    .text(`目标岗位 · ${cs.length} 人在看`);
+
+  // Lines: center → company
+  branches.forEach(b => {
+    const dx = b.coX - CX;
+    const dy = b.coY - CY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const ux = dx / dist, uy = dy / dist;
+    g.append('line')
+      .attr('x1', CX + ux * centerW/2).attr('y1', CY + uy * centerH/2)
+      .attr('x2', b.coX - ux * companyW/2).attr('y2', b.coY - uy * companyH/2)
+      .attr('stroke', '#A5B4FC').attr('stroke-width', 2).attr('stroke-dasharray', '6,4');
+  });
+
+  // Company nodes
+  branches.forEach(b => {
+    const isCollapsed = collapsedCompanies.has(b.company);
+    const gCo = g.append('g').attr('cursor', 'pointer')
+      .on('click', () => {
+        if (isCollapsed) collapsedCompanies.delete(b.company);
+        else collapsedCompanies.add(b.company);
+        renderGraph();
+      });
+    gCo.append('rect')
+      .attr('x', b.coX - companyW/2).attr('y', b.coY - companyH/2)
+      .attr('width', companyW).attr('height', companyH)
+      .attr('rx', 8).attr('fill', '#EEF2FF').attr('stroke', '#818CF8').attr('stroke-width', 1.5);
+    gCo.append('text')
+      .attr('x', b.coX - (isCollapsed ? 4 : 0)).attr('y', b.coY + 1)
+      .attr('text-anchor', 'middle').attr('fill', '#4338CA')
+      .attr('font-size', 12).attr('font-weight', 600)
+      .text(b.company);
+    gCo.append('circle')
+      .attr('cx', b.coX - companyW/2).attr('cy', b.coY)
+      .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
+      .attr('stroke', '#fff').attr('stroke-width', 2);
+    gCo.append('text')
+      .attr('x', b.coX - companyW/2).attr('y', b.coY + 4)
+      .attr('text-anchor', 'middle').attr('fill', '#fff')
+      .attr('font-size', 13).attr('font-weight', 700)
+      .text(isCollapsed ? '+' : '−');
+    gCo.append('circle')
+      .attr('cx', b.coX + companyW/2 - 2).attr('cy', b.coY - companyH/2 + 2)
+      .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
+    gCo.append('text')
+      .attr('x', b.coX + companyW/2 - 2).attr('y', b.coY - companyH/2 + 6)
+      .attr('text-anchor', 'middle').attr('fill', '#fff')
+      .attr('font-size', 10).attr('font-weight', 600)
+      .text(b.count);
+  });
+
+  // Lines: company → candidate
+  branches.forEach(b => {
+    if (!b.members.length || collapsedCompanies.has(b.company)) return;
+    const firstY = b.members[0].y;
+    g.append('line')
+      .attr('x1', b.coX).attr('y1', b.coY + companyH/2)
+      .attr('x2', b.coX).attr('y2', firstY - cardH/2)
+      .attr('stroke', '#C7D2FE').attr('stroke-width', 1.5);
+  });
+
+  // Candidate cards
+  branches.forEach(b => {
+    if (collapsedCompanies.has(b.company)) return;
+    b.members.forEach(m => {
+      const gC = g.append('g').attr('cursor', 'pointer')
+        .on('click', () => { selectCandidate(m.id); });
+      const sx = m.x - cardW/2;
+      const sy = m.y - cardH/2;
+
+      gC.append('rect')
+        .attr('x', sx).attr('y', sy).attr('width', cardW).attr('height', cardH)
+        .attr('rx', 8).attr('fill', '#fff').attr('stroke', '#E5E7EB').attr('stroke-width', 1);
+      gC.append('rect')
+        .attr('x', sx).attr('y', sy).attr('width', 4).attr('height', cardH)
+        .attr('rx', 2).attr('fill', STATUS_COLORS[m.status] || '#9CA3AF');
+      gC.append('text')
+        .attr('x', sx + 16).attr('y', sy + 17)
+        .attr('fill', '#1F2937').attr('font-size', 13).attr('font-weight', 600)
+        .text(m.name + (m.gender ? '（'+m.gender+'）' : ''));
+      gC.append('text')
+        .attr('x', sx + 16).attr('y', sy + 34)
+        .attr('fill', '#6B7280').attr('font-size', 11)
+        .text(fmtYears(m) + ' · 来源：' + (SOURCE[m.source]||'其他'));
+
+      const srcColor = SOURCE_COLORS[m.source] || '#6B7280';
+      const tagW = 36;
+      gC.append('rect')
+        .attr('x', sx + cardW - tagW - 12).attr('y', sy + 8)
+        .attr('width', tagW).attr('height', 18)
+        .attr('rx', 4).attr('fill', srcColor).attr('fill-opacity', 0.15);
+      gC.append('text')
+        .attr('x', sx + cardW - tagW/2 - 12).attr('y', sy + 21)
+        .attr('text-anchor', 'middle').attr('fill', srcColor)
+        .attr('font-size', 10).attr('font-weight', 600)
+        .text((SOURCE[m.source]||'其他').charAt(0));
+    });
+  });
+
+  svg.on('click', (e) => {
+    if (e.target === svg.node()) { editingId = null; renderCandidates(); }
+  });
+}
+
+window.addEventListener('resize', () => {
+  const container = document.getElementById('graphContainer');
+  if (container.clientWidth > 0) renderGraph();
+});
+
+// ---- Init ----
+(async function init() {
+  const cfg = getConfig();
+  if (cfg.url && cfg.key) {
+    supabase = window.supabase.createClient(cfg.url, cfg.key);
+    document.getElementById('setupModal').style.display = 'none';
+    try {
+      const { error } = await supabase.from('positions').select('count', { count: 'exact', head: true });
+      if (error) throw error;
+      document.getElementById('apiStatus').innerHTML = '<span style="color:#10B981;">● 已连接</span>';
+      await loadData();
+      if (data.positions.length > 0) currentPositionId = data.positions[0].id;
+      refreshAll();
+      return;
+    } catch(e) {
+      // Config invalid, show setup
+      supabase = null;
+    }
+  }
+  // Show setup modal
+  document.getElementById('setupModal').style.display = 'flex';
+})();
+</script>
+</body>
+</html>
