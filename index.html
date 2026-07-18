@@ -380,6 +380,11 @@ body {
         <div id="docParseResult" style="margin-top:12px; font-size:13px; color:var(--text2)"></div>
       </div>
 
+      <div id="pendingFilesBar" style="display:none; margin-top:12px; padding:10px 12px; background:var(--primary-light); border-radius:8px; border:1px solid var(--primary);">
+        <div style="font-size:12px; font-weight:600; color:var(--primary); margin-bottom:6px;">📎 待保存的简历文件（保存人选时自动上传）</div>
+        <div id="pendingFilesList" style="font-size:12px; color:var(--text2);"></div>
+      </div>
+
       <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:20px; padding-top:16px; border-top:1px solid var(--border)">
         <button class="btn" onclick="closeModal('addModal')">取消</button>
         <button class="btn primary" id="saveBtn" onclick="saveCandidate()">保存</button>
@@ -501,6 +506,83 @@ async function sbApi(table, method, body, query) {
   return text ? JSON.parse(text) : [];
 }
 
+// ============================================================
+// Supabase Storage 文件上传/删除
+// ============================================================
+async function uploadFileToStorage(candidateId, file, fileName) {
+  const safeName = fileName.replace(/[^a-zA-Z0-9._\-\u4e00-\u9fff]/g, '_');
+  const timestamp = Date.now();
+  const fullPath = candidateId + '/' + timestamp + '_' + safeName;
+  const urlPath = encodeURIComponent(candidateId) + '/' + encodeURIComponent(timestamp + '_' + safeName);
+  const res = await fetch(SB_URL + '/storage/v1/object/resumes/' + urlPath, {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': file.type || 'application/octet-stream',
+      'x-upsert': 'true'
+    },
+    body: file
+  });
+  if (!res.ok) {
+    const txt = await res.text();
+    throw new Error('Upload failed (' + res.status + '): ' + txt);
+  }
+  return {
+    name: fileName,
+    path: fullPath,
+    type: file.type || 'application/octet-stream',
+    size: file.size,
+    uploadedAt: new Date().toISOString()
+  };
+}
+
+async function deleteFileFromStorage(filePath) {
+  const parts = filePath.split('/');
+  const encodedPath = parts.map(p => encodeURIComponent(p)).join('/');
+  const res = await fetch(SB_URL + '/storage/v1/object/resumes/' + encodedPath, {
+    method: 'DELETE',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_KEY
+    }
+  });
+  return res.ok;
+}
+
+function getFileUrl(filePath) {
+  const parts = filePath.split('/');
+  const encodedPath = parts.map(p => encodeURIComponent(p)).join('/');
+  return SB_URL + '/storage/v1/object/public/resumes/' + encodedPath;
+}
+
+// 待上传文件队列
+let pendingFiles = [];
+
+function updatePendingFilesDisplay() {
+  const bar = document.getElementById('pendingFilesBar');
+  const list = document.getElementById('pendingFilesList');
+  if (!bar || !list) return;
+  if (pendingFiles.length === 0) {
+    bar.style.display = 'none';
+    return;
+  }
+  bar.style.display = 'block';
+  list.innerHTML = pendingFiles.map((f, i) => {
+    const size = f.file.size ? Math.round(f.file.size / 1024) + 'KB' : '';
+    const icon = f.type?.startsWith('image/') ? '🖼️' : f.type?.includes('pdf') ? '📄' : '📝';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;">
+      <span>${icon}</span><span style="flex:1;">${esc(f.name)}</span><span style="color:var(--text3);">${size}</span>
+      <button class="btn sm danger" style="padding:2px 8px;font-size:11px;" onclick="removePendingFile(${i})">移除</button>
+    </div>`;
+  }).join('');
+}
+
+function removePendingFile(index) {
+  pendingFiles.splice(index, 1);
+  updatePendingFilesDisplay();
+}
+
 async function testConnection() {
   try {
     await sbApi('positions', 'GET', null, 'select=id&limit=1');
@@ -607,7 +689,8 @@ function toDB(c) {
     education: c.education || [],
     work_experience: c.workExperience || [],
     notes: c.notes,
-    resume_raw: c.resumeRaw
+    resume_raw: c.resumeRaw,
+    resume_files: c.resumeFiles || []
   };
 }
 
@@ -628,6 +711,7 @@ function fromDB(row) {
     workExperience: row.work_experience || [],
     notes: row.notes,
     resumeRaw: row.resume_raw,
+    resumeFiles: row.resume_files || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -829,6 +913,22 @@ function showCandidateDetail(id) {
   if (c.notes) {
     html += `<div class="detail-section"><h4>备注</h4><div style="font-size:13px;white-space:pre-wrap">${esc(c.notes)}</div></div>`;
   }
+  if (c.resumeFiles && c.resumeFiles.length > 0) {
+    html += '<div class="detail-section"><h4>简历文件</h4>';
+    c.resumeFiles.forEach(f => {
+      const url = getFileUrl(f.path);
+      const icon = f.type && f.type.startsWith('image/') ? '🖼️' : f.type && f.type.includes('pdf') ? '📄' : '📝';
+      const size = f.size ? Math.round(f.size / 1024) + 'KB' : '';
+      html += `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:18px;">${icon}</span>
+        <a href="${url}" target="_blank" download="${esc(f.name)}" style="color:var(--primary);text-decoration:none;flex:1;font-size:13px;">${esc(f.name)}</a>
+        <span style="font-size:11px;color:var(--text3);">${size}</span>
+        <button class="btn sm" style="padding:2px 10px;font-size:11px;" onclick="window.open('${url}','_blank')">查看</button>
+        <button class="btn sm danger" style="padding:2px 10px;font-size:11px;" onclick="deleteResumeFile('${c.id}','${f.path}')">删除</button>
+      </div>`;
+    });
+    html += '</div>';
+  }
   html += `<div style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px">
     <button class="btn sm danger" onclick="deleteCandidate('${c.id}')">删除</button>
     <button class="btn sm" onclick="closeModal('detailModal');openEditModal('${c.id}')">编辑</button>
@@ -838,14 +938,35 @@ function showCandidateDetail(id) {
 }
 
 async function deleteCandidate(id) {
-  if (!confirm('确定删除该人选吗？此操作不可恢复。')) return;
+  if (!confirm('确定删除该人选吗？此操作不可恢复，关联的简历文件也会一并删除。')) return;
   try {
+    const c = data.candidates.find(x => x.id === id);
+    if (c && c.resumeFiles && c.resumeFiles.length > 0) {
+      for (const f of c.resumeFiles) {
+        try { await deleteFileFromStorage(f.path); }
+        catch(e) { console.warn('File delete failed:', f.path, e); }
+      }
+    }
     await sbApi('candidates', 'DELETE', null, 'id=eq.' + id);
   } catch(e) { showToast('删除失败: ' + e.message); return; }
   data.candidates = data.candidates.filter(c => c.id !== id);
   if (editingId === id) editingId = null;
   closeModal('detailModal'); refreshAll();
   showToast('已删除');
+}
+
+async function deleteResumeFile(candidateId, filePath) {
+  if (!confirm('确定删除该简历文件吗？')) return;
+  try {
+    await deleteFileFromStorage(filePath);
+    const c = data.candidates.find(x => x.id === candidateId);
+    if (c) {
+      c.resumeFiles = (c.resumeFiles || []).filter(f => f.path !== filePath);
+      await sbApi('candidates', 'PATCH', { resume_files: c.resumeFiles }, 'id=eq.' + candidateId);
+      showCandidateDetail(candidateId);
+      showToast('文件已删除');
+    }
+  } catch(e) { showToast('删除失败: ' + e.message); }
 }
 
 // ============================================================
@@ -893,6 +1014,8 @@ function openEditModal(id) {
   document.getElementById('formYears').value = (c.manualYears != null) ? c.manualYears : (calcWorkYears(c)||'');
   document.getElementById('formNotes').value = c.notes||'';
   document.getElementById('pasteArea').value = c.resumeRaw||'';
+  pendingFiles = [];
+  updatePendingFilesDisplay();
   buildEduEntries(c.education);
   buildWorkEntries(c.workExperience);
   document.getElementById('addModal').classList.add('show');
@@ -918,6 +1041,8 @@ function resetForm() {
   document.getElementById('ocrProgress').style.display = 'none';
   document.getElementById('docProgress').style.display = 'none';
   clearImagePreview();
+  pendingFiles = [];
+  updatePendingFilesDisplay();
   buildEduEntries([]);
   buildWorkEntries([]);
 }
@@ -995,21 +1120,57 @@ async function saveCandidate() {
     education: collectEdu(),
     workExperience: collectWork(),
     notes: document.getElementById('formNotes').value.trim(),
-    resumeRaw: document.getElementById('pasteArea').value.trim()
+    resumeRaw: document.getElementById('pasteArea').value.trim(),
+    resumeFiles: []
   };
 
   try {
+    let candidateId = editingId;
+    let existingFiles = [];
+
     if (editingId) {
+      const existing = data.candidates.find(c => c.id === editingId);
+      existingFiles = existing ? (existing.resumeFiles || []) : [];
+      candidate.resumeFiles = existingFiles;
       const rows = await sbApi('candidates', 'PATCH', toDB(candidate), 'id=eq.' + editingId);
       const idx = data.candidates.findIndex(c => c.id === editingId);
       if (idx >= 0 && rows[0]) data.candidates[idx] = fromDB(rows[0]);
     } else {
       const rows = await sbApi('candidates', 'POST', toDB(candidate), 'select=*&limit=1');
-      if (rows[0]) data.candidates.push(fromDB(rows[0]));
+      if (rows[0]) {
+        candidateId = rows[0].id;
+        data.candidates.push(fromDB(rows[0]));
+      }
+    }
+
+    // 上传待保存的简历文件
+    if (pendingFiles.length > 0 && candidateId) {
+      const uploadBtn = document.getElementById('saveBtn');
+      uploadBtn.textContent = '上传文件中...';
+      uploadBtn.disabled = true;
+      const uploadedFiles = [];
+      for (const pf of pendingFiles) {
+        try {
+          const fileInfo = await uploadFileToStorage(candidateId, pf.file, pf.name);
+          uploadedFiles.push(fileInfo);
+        } catch(e) {
+          console.error('File upload failed:', e);
+          showToast('文件上传失败: ' + pf.name);
+        }
+      }
+      if (uploadedFiles.length > 0) {
+        const allFiles = [...existingFiles, ...uploadedFiles];
+        const rows = await sbApi('candidates', 'PATCH', { resume_files: allFiles }, 'id=eq.' + candidateId);
+        const idx = data.candidates.findIndex(c => c.id === candidateId);
+        if (idx >= 0 && rows[0]) data.candidates[idx] = fromDB(rows[0]);
+      }
+      uploadBtn.disabled = false;
     }
   } catch(e) { showToast('保存失败: ' + e.message); return; }
 
   closeModal('addModal'); editingId = null;
+  pendingFiles = [];
+  updatePendingFilesDisplay();
   refreshAll();
   showToast('已保存');
 }
@@ -1283,6 +1444,12 @@ document.addEventListener('paste', async (e) => {
         reader.onload = (ev) => {
           currentImageDataURL = ev.target.result;
           showImagePreview(currentImageDataURL);
+          pendingFiles.push({
+            file: blob,
+            name: '截图_' + new Date().toLocaleString('zh-CN').replace(/[/\s:]/g, '') + '.png',
+            type: blob.type || 'image/png'
+          });
+          updatePendingFilesDisplay();
           runOCR(currentImageDataURL);
         };
         reader.readAsDataURL(blob);
@@ -1301,6 +1468,12 @@ function handleImageFile(event) {
   reader.onload = (ev) => {
     currentImageDataURL = ev.target.result;
     showImagePreview(currentImageDataURL);
+    pendingFiles.push({
+      file: file,
+      name: file.name,
+      type: file.type || 'image/png'
+    });
+    updatePendingFilesDisplay();
     runOCR(currentImageDataURL);
   };
   reader.readAsDataURL(file);
@@ -1512,6 +1685,13 @@ function handleDocFile(event) {
   if (!file) return;
   const name = file.name.toLowerCase();
   const prog = document.getElementById('docProgress');
+
+  pendingFiles.push({
+    file: file,
+    name: file.name,
+    type: file.type || 'application/octet-stream'
+  });
+  updatePendingFilesDisplay();
 
   if (name.endsWith('.pdf')) {
     parsePDF(file);
