@@ -40,7 +40,9 @@ ALTER TABLE candidates ENABLE ROW LEVEL SECURITY;
 
 -- 5. RLS 策略：允许匿名用户所有操作（个人工具，通过公开链接访问）
 -- 如果你希望加密码保护，可以改为使用 service_role key
+DROP POLICY IF EXISTS "Allow all on positions" ON positions;
 CREATE POLICY "Allow all on positions" ON positions FOR ALL USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow all on candidates" ON candidates;
 CREATE POLICY "Allow all on candidates" ON candidates FOR ALL USING (true) WITH CHECK (true);
 
 -- 6. 演示数据（可选）

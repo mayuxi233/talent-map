@@ -235,7 +235,8 @@ body {
     <div class="sidebar-top">
       <div class="pos-select">
         <select id="posSelect" onchange="switchPosition()"><option value="">-- 选择岗位 --</option></select>
-        <button class="btn sm" onclick="addPosition()">+</button>
+        <button class="btn sm" onclick="addPosition()" title="新增岗位">+</button>
+        <button class="btn sm danger" onclick="deletePosition()" title="删除当前岗位及其所有人选">&#x1F5D1;</button>
       </div>
       <div class="search-box">
         <input type="text" id="searchInput" placeholder="搜索姓名、公司、学校..." oninput="renderCandidates()">
@@ -640,12 +641,12 @@ const STATUS = {
   not_interested: '不考虑'
 };
 const STATUS_COLORS = {
-  pending: '#9CA3AF',
+  pending: '#10B981',
   contacted: '#3B82F6',
   recommended: '#8B5CF6',
-  interviewed: '#F59E0B',
-  eliminated: '#EF4444',
-  offer: '#10B981',
+  interviewed: '#3B82F6',
+  eliminated: '#F59E0B',
+  offer: '#EF4444',
   not_interested: '#6B7280'
 };
 const SOURCE = {
@@ -805,6 +806,40 @@ async function addPosition() {
   } catch(e) { showToast('创建失败: ' + e.message); return; }
   refreshAll();
   showToast('岗位已添加');
+}
+
+async function deletePosition() {
+  if (!currentPositionId) { showToast('请先选择要删除的岗位'); return; }
+  const pos = data.positions.find(p => p.id === currentPositionId);
+  if (!pos) return;
+  const count = data.candidates.filter(c => c.positionId === currentPositionId).length;
+  const msg = count > 0
+    ? `确定删除岗位「${pos.name}」吗？\n该岗位下有 ${count} 个人选，所有人选信息及已上传的简历文件都将被永久删除，此操作不可恢复。`
+    : `确定删除岗位「${pos.name}」吗？此操作不可恢复。`;
+  if (!confirm(msg)) return;
+  try {
+    // 1. 先删除该岗位下所有人选的 Storage 简历文件
+    const cs = data.candidates.filter(c => c.positionId === currentPositionId);
+    for (const c of cs) {
+      if (c.resumeFiles && c.resumeFiles.length > 0) {
+        for (const f of c.resumeFiles) {
+          try { await deleteFileFromStorage(f.path); }
+          catch(e) { console.warn('File delete failed:', f.path, e); }
+        }
+      }
+    }
+    // 2. 删除岗位（外键 ON DELETE CASCADE 会自动删除关联的 candidates 记录）
+    await sbApi('positions', 'DELETE', null, 'id=eq.' + currentPositionId);
+  } catch(e) { showToast('删除失败: ' + e.message); return; }
+  // 3. 更新本地数据
+  data.positions = data.positions.filter(p => p.id !== currentPositionId);
+  data.candidates = data.candidates.filter(c => c.positionId !== currentPositionId);
+  // 4. 切换到剩余的第一个岗位
+  currentPositionId = data.positions.length > 0 ? data.positions[0].id : '';
+  editingId = null;
+  closeModal('detailModal');
+  refreshAll();
+  showToast('岗位已删除');
 }
 
 function switchPosition() {
