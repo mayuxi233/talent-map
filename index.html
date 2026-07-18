@@ -489,6 +489,7 @@ async function sbApi(table, method, body, query) {
   };
   if (body) headers['Prefer'] = 'return=representation';
   if (method === 'PATCH') headers['Prefer'] = 'return=representation';
+  if (method === 'DELETE') headers['Prefer'] = 'return=representation';
   const opts = { method, headers };
   if (body) opts.body = JSON.stringify(body);
   const res = await fetch(url, opts);
@@ -496,7 +497,8 @@ async function sbApi(table, method, body, query) {
     const txt = await res.text();
     throw new Error(res.status + ': ' + txt);
   }
-  return res.json();
+  const text = await res.text();
+  return text ? JSON.parse(text) : [];
 }
 
 async function testConnection() {
