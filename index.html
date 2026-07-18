@@ -344,17 +344,21 @@ body {
 
       <!-- Tab: Image/Screenshot Recognition -->
       <div id="tab-image" style="display:none">
-        <div class="form-group">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label>截图识别（粘贴截图 或 上传图片）</label>
-          <div class="paste-zone" id="pasteZone">
-            <div class="icon">&#x1F4CB;</div>
-            <div class="title">Ctrl+V / Cmd+V 粘贴截图</div>
-            <div class="desc">或点击下方按钮上传简历截图图片</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="ocrEngineBadge" style="font-size:11px;padding:2px 8px;border-radius:12px;background:var(--bg);color:var(--text2);border:1px solid var(--border);">Tesseract.js 离线</span>
+            <button class="btn sm" onclick="openOCRSettings()" style="font-size:11px;padding:2px 8px;">OCR设置</button>
           </div>
-          <div style="margin-top:10px;display:flex;gap:8px;">
-            <label class="btn sm" style="cursor:pointer;">选择图片上传<input type="file" accept="image/*" onchange="handleImageFile(event)" style="display:none"></label>
-            <button class="btn sm" onclick="clearImagePreview()">清除</button>
-          </div>
+        </div>
+        <div class="paste-zone" id="pasteZone">
+          <div class="icon">&#x1F4CB;</div>
+          <div class="title">Ctrl+V / Cmd+V 粘贴截图</div>
+          <div class="desc">或点击下方按钮上传简历截图图片</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;">
+          <label class="btn sm" style="cursor:pointer;">选择图片上传<input type="file" accept="image/*" onchange="handleImageFile(event)" style="display:none"></label>
+          <button class="btn sm" onclick="clearImagePreview()">清除</button>
         </div>
         <div class="ocr-preview" id="ocrPreview" style="display:none"></div>
         <div class="ocr-progress" id="ocrProgress" style="display:none"></div>
@@ -392,6 +396,46 @@ body {
       <button class="modal-close" onclick="closeModal('detailModal')">&times;</button>
     </div>
     <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- OCR Settings Modal -->
+<div class="modal-overlay" id="ocrSettingsModal">
+  <div class="modal" style="width:520px;">
+    <div class="modal-header">
+      <h2>OCR 识别设置</h2>
+      <button class="modal-close" onclick="closeModal('ocrSettingsModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>识别引擎</label>
+        <select id="ocrEngine" onchange="toggleBaiduConfig()">
+          <option value="tesseract">Tesseract.js（免费 / 离线 / 精度一般）</option>
+          <option value="baidu">百度高精度 OCR（免费 1000 次/月 / 精度高）</option>
+        </select>
+      </div>
+      <div id="baiduConfigSection" style="display:none;">
+        <div class="form-group">
+          <label>Cloudflare Worker URL</label>
+          <input type="text" id="ocrWorkerUrl" placeholder="https://ocr-proxy.xxx.workers.dev">
+        </div>
+        <div style="background:var(--bg);padding:12px;border-radius:8px;font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.8;">
+          <strong>配置步骤：</strong><br>
+          1. 注册百度智能云（<a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" style="color:var(--primary);">前往 →</a>），创建「文字识别」应用，获取 <strong>API Key</strong> 和 <strong>Secret Key</strong><br>
+          2. 注册 Cloudflare（<a href="https://dash.cloudflare.com/sign-up" target="_blank" style="color:var(--primary);">前往 →</a>），在 Workers & Pages 创建 Worker<br>
+          3. 将 <code>ocr-worker.js</code> 代码粘贴进去，在 Settings → Variables 中设置：<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<code>BAIDU_API_KEY</code> = 你的 API Key<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;<code>BAIDU_SECRET_KEY</code> = 你的 Secret Key<br>
+          4. 部署后复制 Worker URL，粘贴到上方输入框
+        </div>
+        <button class="btn sm" onclick="testBaiduOCR()" id="testOcrBtn">测试连接</button>
+        <span id="ocrTestResult" style="margin-left:8px;font-size:12px;"></span>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn" onclick="closeModal('ocrSettingsModal')">取消</button>
+        <button class="btn primary" onclick="saveOCRSettings()">保存</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1280,9 +1324,151 @@ function clearImagePreview() {
   document.getElementById('imageParseResult').innerHTML = '';
 }
 
+// ============================================================
+// OCR 设置管理
+// ============================================================
+function getOCRConfig() {
+  return {
+    engine: localStorage.getItem('ocr_engine') || 'tesseract',
+    workerUrl: localStorage.getItem('ocr_worker_url') || ''
+  };
+}
+
+function openOCRSettings() {
+  const cfg = getOCRConfig();
+  document.getElementById('ocrEngine').value = cfg.engine;
+  document.getElementById('ocrWorkerUrl').value = cfg.workerUrl;
+  toggleBaiduConfig();
+  document.getElementById('ocrSettingsModal').classList.add('show');
+}
+
+function toggleBaiduConfig() {
+  const engine = document.getElementById('ocrEngine').value;
+  document.getElementById('baiduConfigSection').style.display = engine === 'baidu' ? 'block' : 'none';
+}
+
+function saveOCRSettings() {
+  const engine = document.getElementById('ocrEngine').value;
+  const workerUrl = document.getElementById('ocrWorkerUrl').value.trim();
+  localStorage.setItem('ocr_engine', engine);
+  localStorage.setItem('ocr_worker_url', workerUrl);
+  updateOCREngineBadge();
+  closeModal('ocrSettingsModal');
+  showToast('OCR 设置已保存');
+}
+
+function updateOCREngineBadge() {
+  const cfg = getOCRConfig();
+  const badge = document.getElementById('ocrEngineBadge');
+  if (!badge) return;
+  if (cfg.engine === 'baidu' && cfg.workerUrl) {
+    badge.textContent = '百度高精度 OCR';
+    badge.style.background = '#EEF2FF';
+    badge.style.color = 'var(--primary)';
+    badge.style.borderColor = 'var(--primary)';
+  } else {
+    badge.textContent = 'Tesseract.js 离线';
+    badge.style.background = 'var(--bg)';
+    badge.style.color = 'var(--text2)';
+    badge.style.borderColor = 'var(--border)';
+  }
+}
+
+async function testBaiduOCR() {
+  const btn = document.getElementById('testOcrBtn');
+  const result = document.getElementById('ocrTestResult');
+  const workerUrl = document.getElementById('ocrWorkerUrl').value.trim();
+
+  if (!workerUrl) {
+    result.innerHTML = '<span style="color:var(--eliminated)">请先填写 Worker URL</span>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = '测试中...';
+  result.innerHTML = '<span style="color:var(--text3)">正在连接...</span>';
+
+  try {
+    // 发送一个 1x1 像素的测试图片
+    const testImage = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+    const resp = await fetch(workerUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: testImage })
+    });
+    const data = await resp.json();
+
+    if (resp.ok && !data.error) {
+      result.innerHTML = `<span style="color:#10B981;">连接成功！识别到 ${data.words_count || 0} 个词</span>`;
+    } else {
+      result.innerHTML = `<span style="color:var(--eliminated)">连接成功但百度返回错误：${data.error || '未知错误'}</span>`;
+    }
+  } catch(err) {
+    result.innerHTML = `<span style="color:var(--eliminated)">连接失败：${err.message}</span>`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '测试连接';
+  }
+}
+
+// ============================================================
+// 百度高精度 OCR（通过 Cloudflare Worker 代理）
+// ============================================================
+async function baiduOCR(dataURL) {
+  const cfg = getOCRConfig();
+  if (!cfg.workerUrl) throw new Error('未配置百度 OCR Worker URL');
+
+  // 去掉 data URL 前缀，只保留 base64 数据
+  const base64 = dataURL.replace(/^data:image\/\w+;base64,/, '');
+
+  const resp = await fetch(cfg.workerUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ image: base64 })
+  });
+
+  if (!resp.ok) {
+    const errData = await resp.json().catch(() => ({}));
+    throw new Error(errData.error || `Worker 返回错误 ${resp.status}`);
+  }
+
+  const data = await resp.json();
+  if (data.error) throw new Error(data.error);
+
+  return data.text || '';
+}
+
+// ============================================================
+// OCR 主函数（支持百度高精度 / Tesseract.js 双引擎）
+// ============================================================
 async function runOCR(dataURL) {
+  const cfg = getOCRConfig();
   const prog = document.getElementById('ocrProgress');
   prog.style.display = 'block';
+
+  // 优先使用百度高精度 OCR
+  if (cfg.engine === 'baidu' && cfg.workerUrl) {
+    prog.innerHTML = '<div>正在使用百度高精度 OCR 识别...</div><div class="bar"><div class="bar-fill" style="width:30%"></div></div>';
+    try {
+      const text = await baiduOCR(dataURL);
+      prog.innerHTML = '<div style="color:#10B981;">百度 OCR 识别完成 ✓</div>';
+
+      if (text && text.trim()) {
+        applyParseResult(text.trim(), 'imageParseResult');
+      } else {
+        document.getElementById('imageParseResult').innerHTML =
+          '<span style="color:var(--eliminated)">百度 OCR 未识别到文字，请尝试更清晰的截图</span>';
+      }
+      return;
+    } catch(err) {
+      console.error('Baidu OCR error:', err);
+      prog.innerHTML = `<div style="color:var(--interviewed);">百度 OCR 失败，正在切换到离线识别...</div><div class="bar"><div class="bar-fill" style="width:50%"></div></div>`;
+      // 等待 1 秒后降级到 Tesseract
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // 回退到 Tesseract.js（离线 OCR）
   prog.innerHTML = '<div>正在识别中，首次加载中文模型可能需要 10-30 秒...</div><div class="bar"><div class="bar-fill" style="width:0%"></div></div>';
 
   try {
@@ -1781,6 +1967,7 @@ window.addEventListener('resize', () => {
 
 // ---- Init ----
 (async function init() {
+  updateOCREngineBadge();
   const cfg = getConfig();
   SB_URL = cfg.url || DEFAULT_SUPABASE_URL;
   SB_KEY = cfg.key || DEFAULT_SUPABASE_KEY;
