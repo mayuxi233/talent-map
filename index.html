@@ -190,6 +190,41 @@ body {
 
 .setup-banner { padding: 12px 20px; background: #FEF3C7; border-bottom: 1px solid #FCD34D; font-size: 13px; display: none; text-align: center; }
 .setup-banner a { color: var(--primary); font-weight: 500; }
+
+/* ===== 相关公司浮动面板 ===== */
+.co-panel {
+  position: absolute; top: 16px; right: 16px; width: 290px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  z-index: 6; box-shadow: 0 4px 14px rgba(0,0,0,0.06); overflow: hidden;
+}
+.co-panel-header {
+  padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; background: var(--primary-light); border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+.co-panel-header .ttl { font-size: 13px; font-weight: 600; color: var(--primary); display: flex; align-items: center; gap: 6px; }
+.co-panel-header .right { display: flex; align-items: center; gap: 8px; }
+.co-panel-header .cnt { font-size: 11px; color: var(--text2); background: var(--card); padding: 1px 8px; border-radius: 10px; border: 1px solid var(--border); }
+.co-panel-header .toggle { color: var(--text2); font-size: 11px; transition: transform 0.2s; }
+.co-panel.collapsed .toggle { transform: rotate(-90deg); }
+.co-panel.collapsed .co-panel-header { border-bottom: none; }
+.co-panel-body { max-height: calc(100vh - 200px); overflow-y: auto; padding: 8px; }
+.co-panel.collapsed .co-panel-body { display: none; }
+.co-item {
+  padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
+  margin-bottom: 6px; cursor: pointer; transition: all 0.15s; background: var(--card); position: relative;
+}
+.co-item:hover { border-color: var(--primary); background: var(--primary-light); }
+.co-item .row1 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.co-item .name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-item .badge { font-size: 10px; padding: 1px 7px; border-radius: 8px; color: #fff; white-space: nowrap; }
+.co-item .meta { font-size: 11px; color: var(--text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.co-item .del { position: absolute; top: 6px; right: 6px; font-size: 13px; color: var(--text3); opacity: 0; transition: opacity 0.15s; background: none; border: none; cursor: pointer; padding: 0 2px; line-height: 1; }
+.co-item:hover .del { opacity: 1; }
+.co-item .del:hover { color: var(--eliminated); }
+.co-add-btn { width: 100%; padding: 8px; border: 1px dashed var(--border); border-radius: 8px; background: var(--bg); cursor: pointer; font-size: 12px; color: var(--text2); font-family: inherit; transition: all 0.15s; }
+.co-add-btn:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-light); }
+.co-empty { text-align: center; padding: 18px 8px; color: var(--text3); font-size: 12px; line-height: 1.7; }
 </style>
 </head>
 <body>
@@ -267,6 +302,13 @@ body {
         <span><span class="dot" style="background:var(--eliminated)"></span>已淘汰</span>
         <span><span class="dot" style="background:var(--offer)"></span>offer</span>
         <span><span class="dot" style="background:var(--not-interested)"></span>不考虑</span>
+      </div>
+      <div class="co-panel collapsed" id="coPanel">
+        <div class="co-panel-header" onclick="toggleCoPanel()">
+          <span class="ttl">&#x1F3E2; 相关公司</span>
+          <span class="right"><span class="cnt" id="coCount">0</span><span class="toggle">&#x25BC;</span></span>
+        </div>
+        <div class="co-panel-body" id="coPanelBody"></div>
       </div>
     </div>
   </div>
@@ -459,6 +501,48 @@ body {
         <div class="tab" data-tab="yearly" onclick="switchSummaryTab('yearly')">年度总结</div>
       </div>
       <div id="summaryContent"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Related Company Modal -->
+<div class="modal-overlay" id="companyModal">
+  <div class="modal" style="width:520px;">
+    <div class="modal-header">
+      <h2 id="companyModalTitle">添加相关公司</h2>
+      <button class="modal-close" onclick="closeModal('companyModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group"><label>公司名称 *</label><input type="text" id="coName" placeholder="如：字节跳动"></div>
+      <div class="form-row">
+        <div class="form-group"><label>触达状态</label>
+          <select id="coStatus">
+            <option value="target">目标公司</option>
+            <option value="contacted">已联系</option>
+            <option value="bd">已BD</option>
+            <option value="coop">已合作</option>
+            <option value="rejected">不考虑</option>
+          </select>
+        </div>
+        <div class="form-group"><label>接触渠道</label>
+          <select id="coChannel">
+            <option value="">--</option>
+            <option value="lp">猎聘</option>
+            <option value="mm">脉脉</option>
+            <option value="bs">boss</option>
+            <option value="zl">智联</option>
+            <option value="rec">转介绍</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group"><label>联系人 / HR</label><input type="text" id="coContact" placeholder="如：HR 张女士"></div>
+      <div class="form-group"><label>备注</label><textarea id="coNotes" rows="3" placeholder="如：已发BD邮件，对方暂无需求..."></textarea></div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <button class="btn danger" id="coDeleteBtn" onclick="deleteCompany()" style="margin-right:auto;display:none;">删除</button>
+        <button class="btn" onclick="closeModal('companyModal')">取消</button>
+        <button class="btn primary" onclick="saveCompany()">保存</button>
+      </div>
     </div>
   </div>
 </div>
@@ -777,6 +861,7 @@ function refreshAll() {
   renderPositionSelect();
   renderCandidates();
   updateStats();
+  renderCompaniesPanel();
   renderGraph();
 }
 
@@ -1976,7 +2061,8 @@ async function exportData() {
     const candidates = await sbApi('candidates', 'GET', null, 'select=*&order=created_at.asc');
     const exportObj = {
       positions: positions.map(p => ({ id: p.id, name: p.name, createdAt: p.created_at })),
-      candidates: candidates.map(fromDB)
+      candidates: candidates.map(fromDB),
+      companies: getAllCompaniesForExport()
     };
     const blob = new Blob([JSON.stringify(exportObj,null,2)],{type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -1999,11 +2085,161 @@ async function importData(e) {
         for (const c of imp.candidates) {
           await sbApi('candidates', 'POST', toDB({...c, positionId: c.positionId}), 'select=*&limit=1');
         }
+        if (imp.companies) mergeImportedCompanies(imp.companies);
         await loadData(); refreshAll(); showToast('已导入 ' + imp.candidates.length + ' 条');
       } else showToast('文件格式不正确');
     } catch(ex) { showToast('导入失败: ' + ex.message); }
   };
   reader.readAsText(file); e.target.value='';
+}
+
+// ============================================================
+// 相关公司 —— 按岗位记录触达过的目标公司（localStorage 存储）
+// ============================================================
+const CO_STATUS = {
+  target:    { label: '目标公司', color: '#9CA3AF' },
+  contacted: { label: '已联系',   color: '#3B82F6' },
+  bd:        { label: '已BD',     color: '#8B5CF6' },
+  coop:      { label: '已合作',   color: '#10B981' },
+  rejected:  { label: '不考虑',   color: '#EF4444' }
+};
+const CO_STORAGE_KEY = 'talent_map_companies';
+
+function getCompanies() {
+  if (!currentPositionId) return [];
+  const all = JSON.parse(localStorage.getItem(CO_STORAGE_KEY) || '{}');
+  return all[currentPositionId] || [];
+}
+
+function saveCompaniesList(list) {
+  if (!currentPositionId) return;
+  const all = JSON.parse(localStorage.getItem(CO_STORAGE_KEY) || '{}');
+  all[currentPositionId] = list;
+  localStorage.setItem(CO_STORAGE_KEY, JSON.stringify(all));
+}
+
+function getAllCompaniesForExport() {
+  return JSON.parse(localStorage.getItem(CO_STORAGE_KEY) || '{}');
+}
+
+function mergeImportedCompanies(imported) {
+  if (!imported || typeof imported !== 'object') return;
+  const all = JSON.parse(localStorage.getItem(CO_STORAGE_KEY) || '{}');
+  Object.keys(imported).forEach(pid => {
+    if (!Array.isArray(imported[pid])) return;
+    const existing = all[pid] || [];
+    const existingIds = new Set(existing.map(c => c.id));
+    imported[pid].forEach(c => { if (!existingIds.has(c.id)) existing.push(c); });
+    all[pid] = existing;
+  });
+  localStorage.setItem(CO_STORAGE_KEY, JSON.stringify(all));
+}
+
+let editingCompanyId = null;
+
+function toggleCoPanel() {
+  document.getElementById('coPanel').classList.toggle('collapsed');
+}
+
+function renderCompaniesPanel() {
+  const panel = document.getElementById('coPanel');
+  const body = document.getElementById('coPanelBody');
+  const list = getCompanies();
+  document.getElementById('coCount').textContent = list.length;
+  if (!currentPositionId) {
+    body.innerHTML = '<div class="co-empty">请先选择岗位</div>';
+    return;
+  }
+  if (list.length === 0) {
+    body.innerHTML = '<div class="co-empty">暂无相关公司<br>记录你为该岗位接触过的公司</div>';
+  } else {
+    body.innerHTML = list.map(co => {
+      const st = CO_STATUS[co.status] || CO_STATUS.target;
+      const channel = co.channel ? (SOURCE[co.channel] || '') : '';
+      const metaParts = [];
+      if (co.contact) metaParts.push('👤 ' + co.contact);
+      if (channel) metaParts.push('来源：' + channel);
+      if (co.notes) metaParts.push(co.notes);
+      return `<div class="co-item" onclick="openCompanyModal('${co.id}')">
+        <div class="row1">
+          <span class="name">${esc(co.name)}</span>
+          <span class="badge" style="background:${st.color}">${st.label}</span>
+        </div>
+        ${metaParts.length ? `<div class="meta">${esc(metaParts.join(' · '))}</div>` : ''}
+        <button class="del" onclick="event.stopPropagation();deleteCompany('${co.id}')">&times;</button>
+      </div>`;
+    }).join('');
+  }
+  body.innerHTML += '<button class="co-add-btn" onclick="openCompanyModal()">+ 添加相关公司</button>';
+}
+
+function openCompanyModal(id) {
+  editingCompanyId = id || null;
+  document.getElementById('companyModalTitle').textContent = id ? '编辑相关公司' : '添加相关公司';
+  const delBtn = document.getElementById('coDeleteBtn');
+  delBtn.style.display = id ? '' : 'none';
+  if (id) {
+    const co = getCompanies().find(c => c.id === id);
+    if (!co) return;
+    document.getElementById('coName').value = co.name || '';
+    document.getElementById('coStatus').value = co.status || 'target';
+    document.getElementById('coChannel').value = co.channel || '';
+    document.getElementById('coContact').value = co.contact || '';
+    document.getElementById('coNotes').value = co.notes || '';
+  } else {
+    document.getElementById('coName').value = '';
+    document.getElementById('coStatus').value = 'target';
+    document.getElementById('coChannel').value = '';
+    document.getElementById('coContact').value = '';
+    document.getElementById('coNotes').value = '';
+  }
+  document.getElementById('companyModal').classList.add('show');
+  setTimeout(() => document.getElementById('coName').focus(), 50);
+}
+
+function saveCompany() {
+  const name = document.getElementById('coName').value.trim();
+  if (!name) { showToast('请填写公司名称'); return; }
+  if (!currentPositionId) { showToast('请先选择岗位'); return; }
+  const list = getCompanies();
+  // 重名校验（新增时）
+  if (!editingCompanyId && list.some(c => c.name.trim() === name)) {
+    showToast('该公司已存在');
+    return;
+  }
+  const old = editingCompanyId ? list.find(c => c.id === editingCompanyId) : null;
+  const rec = {
+    id: editingCompanyId || ('co_' + Date.now() + '_' + Math.random().toString(36).slice(2,6)),
+    name,
+    status: document.getElementById('coStatus').value,
+    channel: document.getElementById('coChannel').value,
+    contact: document.getElementById('coContact').value.trim(),
+    notes: document.getElementById('coNotes').value.trim(),
+    createdAt: old ? old.createdAt : new Date().toISOString()
+  };
+  if (editingCompanyId) {
+    const idx = list.findIndex(c => c.id === editingCompanyId);
+    if (idx >= 0) list[idx] = rec;
+  } else {
+    list.push(rec);
+  }
+  saveCompaniesList(list);
+  closeModal('companyModal');
+  renderCompaniesPanel();
+  renderGraph();
+  showToast(editingCompanyId ? '已更新' : '已添加');
+}
+
+function deleteCompany(id) {
+  if (!id && !editingCompanyId) return;
+  const targetId = id || editingCompanyId;
+  if (!confirm('确定删除这家相关公司记录？')) return;
+  const list = getCompanies().filter(c => c.id !== targetId);
+  saveCompaniesList(list);
+  closeModal('companyModal');
+  renderCompaniesPanel();
+  renderGraph();
+  showToast('已删除');
 }
 
 // ---- Radial Graph ----
@@ -2012,7 +2248,8 @@ function renderGraph() {
   container.querySelector('svg')?.remove();
   const pos = data.positions.find(p => p.id === currentPositionId);
   const cs = currentFilter === 'all' ? getCandidates() : getCandidates().filter(c => c.status === currentFilter);
-  if (!pos || cs.length === 0) return;
+  const relatedCos = getCompanies();
+  if (!pos || (cs.length === 0 && relatedCos.length === 0)) return;
 
   const W = container.clientWidth;
   const H = container.clientHeight;
@@ -2030,6 +2267,14 @@ function renderGraph() {
     const co = c.currentCompany || '未知公司';
     if (!groups.has(co)) groups.set(co, []);
     groups.get(co).push(c);
+  });
+
+  // 合并"相关公司"中尚无候选人的公司（空分支，虚线展示）
+  const coStatusMap = new Map();
+  relatedCos.forEach(rc => {
+    if (!rc.name) return;
+    coStatusMap.set(rc.name.trim(), rc);
+    if (!groups.has(rc.name.trim())) groups.set(rc.name.trim(), []);
   });
   const companies = [...groups.keys()];
   const n = companies.length;
@@ -2056,7 +2301,8 @@ function renderGraph() {
     const members = groups.get(co);
     const startY = coY + companyH/2 + 14;
     const memberData = members.map((c, j) => ({ ...c, x: coX, y: startY + j * (cardH + cardGap) }));
-    branches.push({ company: co, coX, coY, members: memberData, count: members.length });
+    const rc = coStatusMap.get(co.trim());
+    branches.push({ company: co, coX, coY, members: memberData, count: members.length, hasMembers: memberData.length > 0, related: rc });
   });
 
   // Center node
@@ -2073,7 +2319,7 @@ function renderGraph() {
     .attr('x', CX).attr('y', CY + 16)
     .attr('text-anchor', 'middle').attr('fill', '#C7D2FE')
     .attr('font-size', 12)
-    .text(`目标岗位 · ${cs.length} 人在看`);
+    .text(`${cs.length} 人在看 · ${relatedCos.length} 家公司在看`);
 
   // Lines: center → company
   branches.forEach(b => {
@@ -2090,8 +2336,11 @@ function renderGraph() {
   // Company nodes
   branches.forEach(b => {
     const isCollapsed = collapsedCompanies.has(b.company);
+    const rc = b.related;
+    const stColor = rc ? (CO_STATUS[rc.status]||CO_STATUS.target).color : null;
     const gCo = g.append('g').attr('cursor', 'pointer')
       .on('click', () => {
+        if (!b.hasMembers) { openCompanyModal(rc ? rc.id : null); return; }
         if (isCollapsed) collapsedCompanies.delete(b.company);
         else collapsedCompanies.add(b.company);
         renderGraph();
@@ -2099,29 +2348,48 @@ function renderGraph() {
     gCo.append('rect')
       .attr('x', b.coX - companyW/2).attr('y', b.coY - companyH/2)
       .attr('width', companyW).attr('height', companyH)
-      .attr('rx', 8).attr('fill', '#EEF2FF').attr('stroke', '#818CF8').attr('stroke-width', 1.5);
+      .attr('rx', 8)
+      .attr('fill', b.hasMembers ? '#EEF2FF' : '#F9FAFB')
+      .attr('stroke', b.hasMembers ? '#818CF8' : '#D1D5DB')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-dasharray', b.hasMembers ? null : '4,3');
     gCo.append('text')
-      .attr('x', b.coX - (isCollapsed ? 4 : 0)).attr('y', b.coY + 1)
-      .attr('text-anchor', 'middle').attr('fill', '#4338CA')
+      .attr('x', b.coX - (b.hasMembers && isCollapsed ? 4 : 0)).attr('y', b.coY + 1)
+      .attr('text-anchor', 'middle')
+      .attr('fill', b.hasMembers ? '#4338CA' : '#6B7280')
       .attr('font-size', 12).attr('font-weight', 600)
       .text(b.company);
-    gCo.append('circle')
-      .attr('cx', b.coX - companyW/2).attr('cy', b.coY)
-      .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
-      .attr('stroke', '#fff').attr('stroke-width', 2);
-    gCo.append('text')
-      .attr('x', b.coX - companyW/2).attr('y', b.coY + 4)
-      .attr('text-anchor', 'middle').attr('fill', '#fff')
-      .attr('font-size', 13).attr('font-weight', 700)
-      .text(isCollapsed ? '+' : '\u2212');
-    gCo.append('circle')
-      .attr('cx', b.coX + companyW/2 - 2).attr('cy', b.coY - companyH/2 + 2)
-      .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
-    gCo.append('text')
-      .attr('x', b.coX + companyW/2 - 2).attr('y', b.coY - companyH/2 + 6)
-      .attr('text-anchor', 'middle').attr('fill', '#fff')
-      .attr('font-size', 10).attr('font-weight', 600)
-      .text(b.count);
+    if (b.hasMembers) {
+      gCo.append('circle')
+        .attr('cx', b.coX - companyW/2).attr('cy', b.coY)
+        .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
+        .attr('stroke', '#fff').attr('stroke-width', 2);
+      gCo.append('text')
+        .attr('x', b.coX - companyW/2).attr('y', b.coY + 4)
+        .attr('text-anchor', 'middle').attr('fill', '#fff')
+        .attr('font-size', 13).attr('font-weight', 700)
+        .text(isCollapsed ? '+' : '\u2212');
+      gCo.append('circle')
+        .attr('cx', b.coX + companyW/2 - 2).attr('cy', b.coY - companyH/2 + 2)
+        .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
+      gCo.append('text')
+        .attr('x', b.coX + companyW/2 - 2).attr('y', b.coY - companyH/2 + 6)
+        .attr('text-anchor', 'middle').attr('fill', '#fff')
+        .attr('font-size', 10).attr('font-weight', 600)
+        .text(b.count);
+    } else {
+      // 无候选人：左侧触达状态色点
+      gCo.append('circle')
+        .attr('cx', b.coX - companyW/2 + 10).attr('cy', b.coY)
+        .attr('r', 5).attr('fill', stColor || '#9CA3AF')
+        .attr('stroke', '#fff').attr('stroke-width', 1.5);
+      // 下方"暂无人选"标注
+      gCo.append('text')
+        .attr('x', b.coX).attr('y', b.coY + companyH/2 + 14)
+        .attr('text-anchor', 'middle').attr('fill', '#9CA3AF')
+        .attr('font-size', 10)
+        .text(rc ? ('暂无人选 · ' + (CO_STATUS[rc.status]||CO_STATUS.target).label) : '暂无人选');
+    }
   });
 
   // Lines: company → candidate
