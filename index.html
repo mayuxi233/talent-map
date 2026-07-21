@@ -2330,7 +2330,7 @@ function renderGraph() {
     const ux = dx / dist, uy = dy / dist;
     g.append('line')
       .attr('x1', CX + ux * centerW/2).attr('y1', CY + uy * centerH/2)
-      .attr('x2', b.coX - ux * companyW/2).attr('y2', b.coY - uy * companyH/2)
+      .attr('x2', b.coX).attr('y2', b.coY)
       .attr('stroke', '#A5B4FC').attr('stroke-width', 2).attr('stroke-dasharray', '6,4');
   });
 
@@ -2346,41 +2346,32 @@ function renderGraph() {
         else collapsedCompanies.add(b.company);
         renderGraph();
       });
-    gCo.append('rect')
-      .attr('x', b.coX - companyW/2).attr('y', b.coY - companyH/2)
-      .attr('width', companyW).attr('height', companyH)
-      .attr('rx', 8)
-      .attr('fill', b.hasMembers ? '#EEF2FF' : '#F9FAFB')
-      .attr('stroke', b.hasMembers ? '#818CF8' : '#D1D5DB')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-dasharray', b.hasMembers ? null : '4,3');
     if (b.hasMembers) {
       gCo.append('circle')
-        .attr('cx', b.coX - companyW/2).attr('cy', b.coY)
+        .attr('cx', b.coX - 10).attr('cy', b.coY)
         .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
         .attr('stroke', '#fff').attr('stroke-width', 2);
       gCo.append('text')
-        .attr('x', b.coX - companyW/2).attr('y', b.coY + 4)
+        .attr('x', b.coX - 10).attr('y', b.coY + 4)
         .attr('text-anchor', 'middle').attr('fill', '#fff')
         .attr('font-size', 13).attr('font-weight', 700)
         .text(isCollapsed ? '+' : '\u2212');
       gCo.append('circle')
-        .attr('cx', b.coX + companyW/2 - 2).attr('cy', b.coY - companyH/2 + 2)
+        .attr('cx', b.coX + 10).attr('cy', b.coY)
         .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
       gCo.append('text')
-        .attr('x', b.coX + companyW/2 - 2).attr('y', b.coY - companyH/2 + 6)
+        .attr('x', b.coX + 10).attr('y', b.coY + 4)
         .attr('text-anchor', 'middle').attr('fill', '#fff')
         .attr('font-size', 10).attr('font-weight', 600)
         .text(b.count);
     } else {
-      // 无候选人：左侧触达状态色点
+      // 无候选人：触达状态色点 + 标注
       gCo.append('circle')
-        .attr('cx', b.coX - companyW/2 + 10).attr('cy', b.coY)
-        .attr('r', 5).attr('fill', stColor || '#9CA3AF')
+        .attr('cx', b.coX).attr('cy', b.coY)
+        .attr('r', 6).attr('fill', stColor || '#9CA3AF')
         .attr('stroke', '#fff').attr('stroke-width', 1.5);
-      // 下方"暂无人选"标注
       gCo.append('text')
-        .attr('x', b.coX).attr('y', b.coY + companyH/2 + 14)
+        .attr('x', b.coX).attr('y', b.coY + 18)
         .attr('text-anchor', 'middle').attr('fill', '#9CA3AF')
         .attr('font-size', 10)
         .text(rc ? ('暂无人选 · ' + (CO_STATUS[rc.status]||CO_STATUS.target).label) : '暂无人选');
@@ -2392,7 +2383,7 @@ function renderGraph() {
     if (!b.members.length || collapsedCompanies.has(b.company)) return;
     const firstY = b.members[0].y;
     g.append('line')
-      .attr('x1', b.coX).attr('y1', b.coY + companyH/2)
+      .attr('x1', b.coX).attr('y1', b.coY)
       .attr('x2', b.coX).attr('y2', firstY - cardH/2)
       .attr('stroke', '#C7D2FE').attr('stroke-width', 1.5);
   });
