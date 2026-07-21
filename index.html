@@ -2248,8 +2248,7 @@ function renderGraph() {
   container.querySelector('svg')?.remove();
   const pos = data.positions.find(p => p.id === currentPositionId);
   const cs = currentFilter === 'all' ? getCandidates() : getCandidates().filter(c => c.status === currentFilter);
-  const relatedCos = getCompanies();
-  if (!pos || (cs.length === 0 && relatedCos.length === 0)) return;
+  if (!pos || cs.length === 0) return;
 
   const W = container.clientWidth;
   const H = container.clientHeight;
@@ -2267,14 +2266,6 @@ function renderGraph() {
     const co = c.currentCompany || '未知公司';
     if (!groups.has(co)) groups.set(co, []);
     groups.get(co).push(c);
-  });
-
-  // 合并"相关公司"中尚无候选人的公司（空分支，虚线展示）
-  const coStatusMap = new Map();
-  relatedCos.forEach(rc => {
-    if (!rc.name) return;
-    coStatusMap.set(rc.name.trim(), rc);
-    if (!groups.has(rc.name.trim())) groups.set(rc.name.trim(), []);
   });
   const companies = [...groups.keys()];
   const n = companies.length;
@@ -2301,8 +2292,7 @@ function renderGraph() {
     const members = groups.get(co);
     const startY = coY + companyH/2 + 14;
     const memberData = members.map((c, j) => ({ ...c, x: coX, y: startY + j * (cardH + cardGap) }));
-    const rc = coStatusMap.get(co.trim());
-    branches.push({ company: co, coX, coY, members: memberData, count: members.length, hasMembers: memberData.length > 0, related: rc });
+    branches.push({ company: co, coX, coY, members: memberData, count: members.length });
   });
 
   // Center node
@@ -2319,11 +2309,10 @@ function renderGraph() {
     .attr('x', CX).attr('y', CY + 16)
     .attr('text-anchor', 'middle').attr('fill', '#C7D2FE')
     .attr('font-size', 12)
-    .text(`${cs.length} 人在看 · ${relatedCos.length} 家公司在看`);
+    .text(`${cs.length} 人在看`);
 
-  // Lines: center → company (skip related-only companies with no candidates)
+  // Lines: center → company
   branches.forEach(b => {
-    if (!b.hasMembers) return;
     const dx = b.coX - CX;
     const dy = b.coY - CY;
     const dist = Math.sqrt(dx*dx + dy*dy);
@@ -2337,45 +2326,29 @@ function renderGraph() {
   // Company nodes
   branches.forEach(b => {
     const isCollapsed = collapsedCompanies.has(b.company);
-    const rc = b.related;
-    const stColor = rc ? (CO_STATUS[rc.status]||CO_STATUS.target).color : null;
     const gCo = g.append('g').attr('cursor', 'pointer')
       .on('click', () => {
-        if (!b.hasMembers) { openCompanyModal(rc ? rc.id : null); return; }
         if (isCollapsed) collapsedCompanies.delete(b.company);
         else collapsedCompanies.add(b.company);
         renderGraph();
       });
-    if (b.hasMembers) {
-      gCo.append('circle')
-        .attr('cx', b.coX - 10).attr('cy', b.coY)
-        .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
-        .attr('stroke', '#fff').attr('stroke-width', 2);
-      gCo.append('text')
-        .attr('x', b.coX - 10).attr('y', b.coY + 4)
-        .attr('text-anchor', 'middle').attr('fill', '#fff')
-        .attr('font-size', 13).attr('font-weight', 700)
-        .text(isCollapsed ? '+' : '\u2212');
-      gCo.append('circle')
-        .attr('cx', b.coX + 10).attr('cy', b.coY)
-        .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
-      gCo.append('text')
-        .attr('x', b.coX + 10).attr('y', b.coY + 4)
-        .attr('text-anchor', 'middle').attr('fill', '#fff')
-        .attr('font-size', 10).attr('font-weight', 600)
-        .text(b.count);
-    } else {
-      // 无候选人：触达状态色点 + 标注
-      gCo.append('circle')
-        .attr('cx', b.coX).attr('cy', b.coY)
-        .attr('r', 6).attr('fill', stColor || '#9CA3AF')
-        .attr('stroke', '#fff').attr('stroke-width', 1.5);
-      gCo.append('text')
-        .attr('x', b.coX).attr('y', b.coY + 18)
-        .attr('text-anchor', 'middle').attr('fill', '#9CA3AF')
-        .attr('font-size', 10)
-        .text(rc ? ('暂无人选 · ' + (CO_STATUS[rc.status]||CO_STATUS.target).label) : '暂无人选');
-    }
+    gCo.append('circle')
+      .attr('cx', b.coX - 10).attr('cy', b.coY)
+      .attr('r', 9).attr('fill', isCollapsed ? '#10B981' : '#F59E0B')
+      .attr('stroke', '#fff').attr('stroke-width', 2);
+    gCo.append('text')
+      .attr('x', b.coX - 10).attr('y', b.coY + 4)
+      .attr('text-anchor', 'middle').attr('fill', '#fff')
+      .attr('font-size', 13).attr('font-weight', 700)
+      .text(isCollapsed ? '+' : '\u2212');
+    gCo.append('circle')
+      .attr('cx', b.coX + 10).attr('cy', b.coY)
+      .attr('r', 11).attr('fill', isCollapsed ? '#10B981' : '#4F46E5');
+    gCo.append('text')
+      .attr('x', b.coX + 10).attr('y', b.coY + 4)
+      .attr('text-anchor', 'middle').attr('fill', '#fff')
+      .attr('font-size', 10).attr('font-weight', 600)
+      .text(b.count);
   });
 
   // Lines: company → candidate
