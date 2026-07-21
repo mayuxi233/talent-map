@@ -2354,12 +2354,6 @@ function renderGraph() {
       .attr('stroke', b.hasMembers ? '#818CF8' : '#D1D5DB')
       .attr('stroke-width', 1.5)
       .attr('stroke-dasharray', b.hasMembers ? null : '4,3');
-    gCo.append('text')
-      .attr('x', b.coX - (b.hasMembers && isCollapsed ? 4 : 0)).attr('y', b.coY + 1)
-      .attr('text-anchor', 'middle')
-      .attr('fill', b.hasMembers ? '#4338CA' : '#6B7280')
-      .attr('font-size', 12).attr('font-weight', 600)
-      .text(b.company);
     if (b.hasMembers) {
       gCo.append('circle')
         .attr('cx', b.coX - companyW/2).attr('cy', b.coY)
