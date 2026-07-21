@@ -2321,8 +2321,9 @@ function renderGraph() {
     .attr('font-size', 12)
     .text(`${cs.length} 人在看 · ${relatedCos.length} 家公司在看`);
 
-  // Lines: center → company
+  // Lines: center → company (skip related-only companies with no candidates)
   branches.forEach(b => {
+    if (!b.hasMembers) return;
     const dx = b.coX - CX;
     const dy = b.coY - CY;
     const dist = Math.sqrt(dx*dx + dy*dy);
